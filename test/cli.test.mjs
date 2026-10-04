@@ -304,8 +304,9 @@ test('content hashes use matching cache metadata and refresh invalid entries', a
   assert.deepEqual(entry, {
     filePath,
     size: stat.size,
-    createAt: stat.birthtime.toISOString(),
-    modifiedAt: stat.mtime.toISOString(),
+    mtime: stat.mtime.toISOString(),
+    ctime: stat.ctime.toISOString(),
+    crtime: stat.birthtime.toISOString(),
     hash: actualHash,
   });
 
@@ -316,8 +317,10 @@ test('content hashes use matching cache metadata and refresh invalid entries', a
   for (const change of [
     { filePath: `${filePath}.different` },
     { size: stat.size + 1 },
-    { createAt: '2000-01-01T00:00:00.000Z' },
-    { modifiedAt: '2000-01-01T00:00:00.000Z' },
+    { mtime: '2000-01-01T00:00:00.000Z' },
+    { ctime: '2000-01-01T00:00:00.000Z' },
+    { crtime: '2000-01-01T00:00:00.000Z' },
+    { ctime: undefined },
   ]) {
     await fs.writeFile(cachePath, JSON.stringify({ ...entry, ...change, hash: otherHash }));
     assert.equal(run('hash-repeat', folder).status, 0);

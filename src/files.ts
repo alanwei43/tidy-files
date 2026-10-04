@@ -15,8 +15,9 @@ type HashCacheEntry = {
     filePath: string;
     size: number;
     hash: string;
-    createAt: string;
-    modifiedAt: string;
+    mtime: string;
+    ctime: string;
+    crtime: string;
 };
 const cacheDirectory = path.join(os.homedir(), '.tidy-files-caches');
 function cachePath(filePath: string): string {
@@ -26,8 +27,9 @@ function cacheMetadata(filePath: string, stat: Stats): Omit<HashCacheEntry, 'has
     return {
         filePath,
         size: stat.size,
-        createAt: stat.birthtime.toISOString(),
-        modifiedAt: stat.mtime.toISOString(),
+        mtime: stat.mtime.toISOString(),
+        ctime: stat.ctime.toISOString(),
+        crtime: stat.birthtime.toISOString(),
     };
 }
 async function readCachedHash(filePath: string, stat: Stats): Promise<string | undefined> {
@@ -35,7 +37,8 @@ async function readCachedHash(filePath: string, stat: Stats): Promise<string | u
         const entry: HashCacheEntry = JSON.parse(await fs.readFile(cachePath(filePath), 'utf8'));
         const metadata = cacheMetadata(filePath, stat);
         if (entry.filePath === metadata.filePath && entry.size === metadata.size
-            && entry.createAt === metadata.createAt && entry.modifiedAt === metadata.modifiedAt
+            && entry.mtime === metadata.mtime && entry.ctime === metadata.ctime
+            && entry.crtime === metadata.crtime
             && typeof entry.hash === 'string' && /^[0-9a-f]{32}$/.test(entry.hash))
             return entry.hash;
     }
@@ -48,8 +51,8 @@ async function writeCachedHash(filePath: string, stat: Stats, hash: string): Pro
     const temporary = path.join(cacheDirectory, `.${randomUUID()}.tmp`);
     try {
         await fs.mkdir(cacheDirectory, { recursive: true });
-        const { size, createAt, modifiedAt } = cacheMetadata(filePath, stat);
-        await fs.writeFile(temporary, JSON.stringify({ filePath, size, hash, createAt, modifiedAt }), { flag: 'wx' });
+        const { size, mtime, ctime, crtime } = cacheMetadata(filePath, stat);
+        await fs.writeFile(temporary, JSON.stringify({ filePath, size, hash, mtime, ctime, crtime }), { flag: 'wx' });
         await fs.rename(temporary, cachePath(filePath));
     }
     catch {
