@@ -5,6 +5,9 @@ import { DUPLICATE_MARKER, normalizeFileName, resolveHashFileName } from './name
 function compareText(a: string, b: string): number {
     return a < b ? -1 : a > b ? 1 : 0;
 }
+function compareCandidates(a: FileInfo, b: FileInfo): number {
+    return b.size - a.size || compareText(a.fullPath, b.fullPath);
+}
 export async function listExtensions(folder: string): Promise<void> {
     const source = await ensureSourceFolder(folder);
     const files = await scanFiles(source, undefined, false);
@@ -144,7 +147,7 @@ export async function organizeNames(folder: string, target?: string): Promise<vo
             const normalized = normalizeFileName(info.fileName);
             if (!normalized.hasHash && !normalized.hasDuplicateSuffix)
                 continue;
-            const candidates = getCandidates(info, FILES_INFO).sort((a, b) => b.size - a.size || compareText(a.fullPath, b.fullPath));
+            const candidates = getCandidates(info, FILES_INFO).sort(compareCandidates);
             const groupKey = candidates.map((candidate) => candidate.fullPath).join('\0');
             if (promptedGroups.has(groupKey))
                 continue;
@@ -195,6 +198,109 @@ export async function organizeNames(folder: string, target?: string): Promise<vo
                     ...selected, fullPath: renamed, fileName: cleanedName,
                 });
                 console.log(`${selected.fullPath} -> ${renamed}`);
+            }
+        }
+    }
+    finally {
+        input.close();
+    }
+}
+
+function keepRepeatCandidates(info: FileInfo, files: Map<string, FileInfo>): FileInfo[] {
+    const name = path.parse(normalizeFileName(info.fileName).name).name;
+    return [...files.values()].filter((candidate) => candidate.hash === info.hash
+        || (name.length > 0 && path.parse(candidate.fileName).name.includes(name)))
+        .sort(compareCandidates);
+}
+
+function parseKeepRepeatSelection(answer: string, candidateCount: number): Set<number> | undefined {
+    if (!/^[1-9]\d*(?:(?:\s*,\s*|\s+)[1-9]\d*)*$/.test(answer))
+        return undefined;
+    const indexes = new Set<number>();
+    for (const value of answer.split(/[,\s]+/)) {
+        const index = Number(value) - 1;
+        if (!Number.isSafeInteger(index) || index >= candidateCount)
+            return undefined;
+        indexes.add(index);
+    }
+    return indexes;
+}
+
+function askKeepRepeatSelection(input: ReturnType<typeof createInterface>): Promise<string | undefined> {
+    return new Promise((resolve) => {
+        const onClose = () => resolve(undefined);
+        input.once('close', onClose);
+        input.question('输入要保留的文件序号（空格或英文逗号分隔，回车跳过）: ').then(
+            (answer) => {
+                input.off('close', onClose);
+                resolve(answer);
+            },
+            () => {
+                input.off('close', onClose);
+                resolve(undefined);
+            },
+        );
+    });
+}
+
+export async function keepRepeatedFiles(folder: string, target?: string): Promise<void> {
+    const source = await ensureSourceFolder(folder);
+    const destination = target ? await prepareTarget(source, target) : undefined;
+    const files = await scanFiles(source, destination, true);
+    const input = createInterface({ input: process.stdin, output: process.stdout });
+    let inputClosed = false;
+    input.on('close', () => { inputClosed = true; });
+    try {
+        for (const scanned of [...files.values()]) {
+            if (inputClosed)
+                break;
+            const info = files.get(scanned.fullPath);
+            if (info !== scanned)
+                continue;
+            const candidates = keepRepeatCandidates(info, files);
+            const normalized = normalizeFileName(info.fileName);
+            if (candidates.length === 1 && !normalized.hasHash && !normalized.hasDuplicateSuffix)
+                continue;
+            for (const [index, candidate] of candidates.entries())
+                console.log(`${index + 1}. ${candidate.hash} | ${candidate.fileName} | ${candidate.size} B | ${candidate.directory}`);
+            const response = await askKeepRepeatSelection(input);
+            if (response === undefined)
+                break;
+            const answer = response.trim();
+            if (!answer)
+                continue;
+            const selectedIndexes = parseKeepRepeatSelection(answer, candidates.length);
+            if (!selectedIndexes) {
+                console.error('输入无效，已跳过该轮');
+                continue;
+            }
+            for (const [index, candidate] of candidates.entries()) {
+                if (selectedIndexes.has(index))
+                    continue;
+                if (destination) {
+                    const moved = await moveToTarget(candidate, destination);
+                    console.log(`已移动: ${candidate.fullPath} -> ${moved}`);
+                }
+                else {
+                    await removeFile(candidate.fullPath);
+                    console.log(`已删除: ${candidate.fullPath}`);
+                }
+                files.delete(candidate.fullPath);
+            }
+            for (const [index, candidate] of candidates.entries()) {
+                if (!selectedIndexes.has(index))
+                    continue;
+                const cleanedName = normalizeFileName(candidate.fileName).name;
+                if (cleanedName === candidate.fileName)
+                    continue;
+                const renamed = await renameInPlace(candidate, cleanedName);
+                if (!renamed) {
+                    console.error(`重命名冲突，已保留原名: ${candidate.fullPath}`);
+                    continue;
+                }
+                files.delete(candidate.fullPath);
+                files.set(renamed, { ...candidate, fullPath: renamed, fileName: cleanedName });
+                console.log(`${candidate.fullPath} -> ${renamed}`);
             }
         }
     }

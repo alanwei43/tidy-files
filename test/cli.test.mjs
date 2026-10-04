@@ -73,17 +73,72 @@ test('commands do not create log files', async (t) => {
   assert.equal(await present(logPath), false);
 });
 
-function runInteractive(args, response) {
+test('every command accepts an omitted folder and uses the current directory', async (t) => {
+  const runHere = (folder, ...args) => spawnSync(process.execPath, [cli, ...args], {
+    cwd: folder, env: testEnv, input: '', encoding: 'utf8',
+  });
+
+  const listedFolder = await fixture(t);
+  await put(path.join(listedFolder, 'song.mp3'), 'music');
+  const listed = runHere(listedFolder, 'ls-ext');
+  assert.equal(listed.status, 0, listed.stderr);
+  assert.equal(listed.stdout.trim(), '.mp3: 1');
+
+  const removedFolder = await fixture(t);
+  await put(path.join(removedFolder, 'song.mp3'), 'music');
+  const removed = runHere(removedFolder, 'rm-ext', '--ext', 'mp3');
+  assert.equal(removed.status, 0, removed.stderr);
+  assert.equal(await present(path.join(removedFolder, 'song.mp3')), false);
+
+  const renamedHashFolder = await fixture(t);
+  await put(path.join(renamedHashFolder, `${embeddedHash} song.mp3`), 'music');
+  const renamedHash = runHere(renamedHashFolder, 'h2e');
+  assert.equal(renamedHash.status, 0, renamedHash.stderr);
+  assert.equal(await present(path.join(renamedHashFolder, `song [${embeddedHash}].mp3`)), true);
+
+  const repeatedFolder = await fixture(t);
+  await put(path.join(repeatedFolder, 'song.mp3'), 'music');
+  await put(path.join(repeatedFolder, 'copy.mp3'), 'music');
+  const repeated = runHere(repeatedFolder, 'hash-repeat');
+  assert.equal(repeated.status, 0, repeated.stderr);
+  assert.equal((await fs.readdir(repeatedFolder)).length, 1);
+
+  const flattenedFolder = await fixture(t);
+  await put(path.join(flattenedFolder, 'nested', 'song.mp3'), 'music');
+  const flattened = runHere(flattenedFolder, 'flat-files');
+  assert.equal(flattened.status, 0, flattened.stderr);
+  assert.equal(await present(path.join(flattenedFolder, 'song.mp3')), true);
+
+  const trimmedFolder = await fixture(t);
+  await put(path.join(trimmedFolder, ' song .mp3'), 'music');
+  const trimmed = runHere(trimmedFolder, 'trim-name');
+  assert.equal(trimmed.status, 0, trimmed.stderr);
+  assert.equal(await present(path.join(trimmedFolder, 'song.mp3')), true);
+
+  for (const command of ['organize-name', 'keep-repeat']) {
+    const folder = await fixture(t);
+    await put(path.join(folder, 'song (1).mp3'), 'longer');
+    await put(path.join(folder, 'song.mp3'), 'short');
+    const result = await runInteractive([command], '1', folder);
+    assert.equal(result.status, 0, `${command}: ${result.stderr}`);
+    assert.equal(await fs.readFile(path.join(folder, 'song.mp3'), 'utf8'), 'longer');
+    assert.equal(await present(path.join(folder, 'song (1).mp3')), false);
+  }
+});
+
+function runInteractive(args, response, cwd = testCwd) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [cli, ...args], { cwd: testCwd, env: testEnv, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [cli, ...args], { cwd, env: testEnv, stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
-    let answered = false;
+    const answers = Array.isArray(response) ? response : [response];
+    let answered = 0;
     child.stdout.on('data', (chunk) => {
       stdout += chunk.toString();
-      if (!answered && stdout.includes('输入要保留的文件序号')) {
-        answered = true;
-        child.stdin.write(`${response}\n`);
+      const prompts = stdout.split('输入要保留的文件序号').length - 1;
+      while (answered < prompts) {
+        child.stdin.write(`${answers[answered] ?? ''}\n`);
+        answered += 1;
       }
     });
     child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
@@ -295,6 +350,97 @@ test('organize-name deletes unselected files when no target is given', async (t)
   assert.equal(result.status, 0, result.stderr);
   assert.equal(await fs.readFile(path.join(folder, 'song.mp3'), 'utf8'), 'chosen');
   assert.equal(await present(path.join(folder, 'song (1).mp3')), false);
+});
+
+test('keep-repeat combines hash and name matches, moves unselected files, and renames selected files', async (t) => {
+  const folder = await fixture(t);
+  const target = path.join(folder, 'removed');
+  await put(path.join(folder, 'alpha (1).mp3'), 'longest');
+  await put(path.join(folder, 'alpha live.flac'), 'medium');
+  await put(path.join(folder, 'alpha.mp3'), 'short');
+  await put(path.join(folder, 'other.mp3'), 'longest');
+
+  const result = await runInteractive(['keep-repeat', folder, '--target', target], '1, 3');
+  assert.equal(result.status, 0, result.stderr);
+  const hash = createHash('md5').update('longest').digest('hex');
+  assert.deepEqual(result.stdout.split('\n').filter((line) => /^\d+\. /.test(line)), [
+    `1. ${hash} | alpha (1).mp3 | 7 B | ${folder}`,
+    `2. ${hash} | other.mp3 | 7 B | ${folder}`,
+    `3. ${createHash('md5').update('medium').digest('hex')} | alpha live.flac | 6 B | ${folder}`,
+    `4. ${createHash('md5').update('short').digest('hex')} | alpha.mp3 | 5 B | ${folder}`,
+  ]);
+  assert.equal(await fs.readFile(path.join(folder, 'alpha.mp3'), 'utf8'), 'longest');
+  assert.equal(await fs.readFile(path.join(folder, 'alpha live.flac'), 'utf8'), 'medium');
+  assert.equal(await fs.readFile(path.join(target, 'alpha.mp3'), 'utf8'), 'short');
+  assert.equal(await fs.readFile(path.join(target, 'other.mp3'), 'utf8'), 'longest');
+});
+
+test('keep-repeat allows a later round to delete a file kept earlier', async (t) => {
+  const folder = await fixture(t);
+  await put(path.join(folder, 'a.mp3'), 'same');
+  await put(path.join(folder, 'ab.mp3'), 'same');
+
+  const result = await runInteractive(['keep-repeat', folder], ['1 2', '2']);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.match(/输入要保留的文件序号/g)?.length, 2);
+  assert.equal(await present(path.join(folder, 'a.mp3')), false);
+  assert.equal(await fs.readFile(path.join(folder, 'ab.mp3'), 'utf8'), 'same');
+});
+
+test('keep-repeat finishes after piped input closes', async (t) => {
+  const folder = await fixture(t);
+  await put(path.join(folder, 'song (1).mp3'), 'chosen');
+  await put(path.join(folder, 'song.mp3'), 'other');
+
+  const result = spawnSync(process.execPath, [cli, 'keep-repeat', folder], {
+    cwd: testCwd, env: testEnv, input: '1\n', encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(await fs.readFile(path.join(folder, 'song.mp3'), 'utf8'), 'chosen');
+});
+
+test('keep-repeat skips a clean singleton but prompts for hash and numbered singletons', async (t) => {
+  const folder = await fixture(t);
+  await put(path.join(folder, `hash [${embeddedHash}].mp3`), 'hashed');
+  await put(path.join(folder, 'marked (1).mp3'), 'marked');
+  await put(path.join(folder, 'plain.mp3'), 'plain');
+
+  const result = await runInteractive(['keep-repeat', folder], ['1', '1']);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.match(/输入要保留的文件序号/g)?.length, 2);
+  assert.equal(await fs.readFile(path.join(folder, 'hash.mp3'), 'utf8'), 'hashed');
+  assert.equal(await fs.readFile(path.join(folder, 'marked.mp3'), 'utf8'), 'marked');
+  assert.equal(await fs.readFile(path.join(folder, 'plain.mp3'), 'utf8'), 'plain');
+});
+
+test('keep-repeat rejects an invalid selection without changing files', async (t) => {
+  const folder = await fixture(t);
+  await put(path.join(folder, 'song (1).mp3'), 'first');
+  await put(path.join(folder, 'song.mp3'), 'second');
+
+  const skipped = await runInteractive(['keep-repeat', folder], '');
+  assert.equal(skipped.status, 0, skipped.stderr);
+  assert.equal(await fs.readFile(path.join(folder, 'song (1).mp3'), 'utf8'), 'first');
+  assert.equal(await fs.readFile(path.join(folder, 'song.mp3'), 'utf8'), 'second');
+
+  const result = await runInteractive(['keep-repeat', folder], '1,9');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stderr, /输入无效/);
+  assert.equal(await fs.readFile(path.join(folder, 'song (1).mp3'), 'utf8'), 'first');
+  assert.equal(await fs.readFile(path.join(folder, 'song.mp3'), 'utf8'), 'second');
+});
+
+test('keep-repeat retains a selected file when its cleaned name conflicts', async (t) => {
+  const folder = await fixture(t);
+  await put(path.join(folder, 'song (1).mp3'), 'largest');
+  await put(path.join(folder, 'song (2).mp3'), 'tiny');
+  await put(path.join(folder, 'song.mp3'), 'old');
+
+  const result = await runInteractive(['keep-repeat', folder], '1,2');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stderr, /重命名冲突/);
+  assert.equal(await fs.readFile(path.join(folder, 'song.mp3'), 'utf8'), 'largest');
+  assert.equal(await fs.readFile(path.join(folder, 'song (2).mp3'), 'utf8'), 'tiny');
 });
 
 test('a conflicting in-place rename is skipped without overwriting', async (t) => {

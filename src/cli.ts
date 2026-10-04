@@ -2,28 +2,31 @@
 import { readFileSync } from 'node:fs';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { flattenFiles, hashToEnd, listExtensions, organizeNames, removeExtensions, removeRepeatedHashes, trimNames, } from './commands.js';
+import { flattenFiles, hashToEnd, keepRepeatedFiles, listExtensions, organizeNames, removeExtensions, removeRepeatedHashes, trimNames, } from './commands.js';
 const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
 try {
     await yargs(hideBin(process.argv))
         .scriptName('tidy-files')
-        .usage('$0 <command> <folder> [options]')
-        .command('ls-ext <folder>', '列出递归目录中的扩展名和文件数量', (builder) => builder.positional('folder', { type: 'string', demandOption: true }), async (argv) => listExtensions(argv.folder))
-        .command('rm-ext <folder>', '按扩展名删除或移动文件', (builder) => builder
+        .usage('$0 <command> [folder] [options]')
+        .command('ls-ext [folder]', '列出递归目录中的扩展名和文件数量', (builder) => builder.positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' }), async (argv) => listExtensions(argv.folder))
+        .command('rm-ext [folder]', '按扩展名删除或移动文件', (builder) => builder
         .parserConfiguration({ 'boolean-negation': false })
-        .positional('folder', { type: 'string', demandOption: true })
+        .positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' })
         .option('ext', { type: 'string', describe: '逗号分隔的扩展名' })
         .option('no-ext', { type: 'boolean', describe: '匹配没有扩展名的文件' })
         .option('target', { type: 'string', describe: '移动匹配的文件到该目录' }), async (argv) => removeExtensions(argv.folder, argv.ext, argv.target, argv.noExt))
-        .command('h2e <folder>', '将文件名开头的 hash 移到末尾', (builder) => builder.positional('folder', { type: 'string', demandOption: true }), async (argv) => hashToEnd(argv.folder))
-        .command('hash-repeat <folder>', '删除或移动内容重复的文件', (builder) => builder
-        .positional('folder', { type: 'string', demandOption: true })
+        .command('h2e [folder]', '将文件名开头的 hash 移到末尾', (builder) => builder.positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' }), async (argv) => hashToEnd(argv.folder))
+        .command('hash-repeat [folder]', '删除或移动内容重复的文件', (builder) => builder
+        .positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' })
         .option('target', { type: 'string', describe: '移动重复文件到该目录' }), async (argv) => removeRepeatedHashes(argv.folder, argv.target))
-        .command('flat-files <folder>', '将子目录中的文件移到根目录', (builder) => builder.positional('folder', { type: 'string', demandOption: true }), async (argv) => flattenFiles(argv.folder))
-        .command('trim-name <folder>', '去掉文件名首尾空白', (builder) => builder.positional('folder', { type: 'string', demandOption: true }), async (argv) => trimNames(argv.folder))
-        .command('organize-name <folder>', '交互式整理重复文件名', (builder) => builder
-        .positional('folder', { type: 'string', demandOption: true })
+        .command('flat-files [folder]', '将子目录中的文件移到根目录', (builder) => builder.positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' }), async (argv) => flattenFiles(argv.folder))
+        .command('trim-name [folder]', '去掉文件名首尾空白', (builder) => builder.positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' }), async (argv) => trimNames(argv.folder))
+        .command('organize-name [folder]', '交互式整理重复文件名', (builder) => builder
+        .positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' })
         .option('target', { type: 'string', describe: '移动未选中的文件到该目录' }), async (argv) => organizeNames(argv.folder, argv.target))
+        .command('keep-repeat [folder]', '交互选择要保留的重复文件', (builder) => builder
+        .positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' })
+        .option('target', { type: 'string', describe: '移动未选中的文件到该目录' }), async (argv) => keepRepeatedFiles(argv.folder, argv.target))
         .demandCommand(1)
         .strict()
         .epilogue(`版本：${version}`)
