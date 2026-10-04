@@ -37,4 +37,4 @@ npm test
 npm pack --dry-run
 ```
 
-推送到 `master` 会运行 GitHub Actions 测试，测试通过后使用 Repository secret `NPM_ACCESS_TOKEN` 发布到 npm。发布前需在 GitHub 仓库设置中添加该 secret，并确保 token 有 `@js-core/tidy-files` 的发布权限。
+推送到 `master` 会运行 GitHub Actions 测试，测试通过后通过 npm Trusted Publishing 发布到 npm。首次使用前，在 npmjs.com 的 `@js-core/tidy-files` 包设置中添加 GitHub Actions Trusted Publisher：Organization or user 填 `alanwei43`，Repository 填 `tidy-files`，Workflow filename 填 `publish.yml`，并允许 `npm publish`。无需配置 `NPM_ACCESS_TOKEN`；首次通过 Trusted Publishing 发布成功后，可删除旧的 GitHub Repository secret，并在 npm 撤销旧 token。
