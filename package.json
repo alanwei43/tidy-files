@@ -1,6 +1,6 @@
 {
   "name": "@js-core/tidy-files",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A CLI for cleaning up duplicate music files",
   "type": "module",
   "main": "dist/index.js",
@@ -14,7 +14,10 @@
   "bin": {
     "tidy-files": "dist/cli.js"
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "npm run build && node --test test/*.test.mjs",
