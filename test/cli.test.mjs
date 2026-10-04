@@ -258,6 +258,24 @@ test('organize-name keeps the selected file, moves the rest, and removes both ma
   assert.equal(await present(path.join(folder, `song [${embeddedHash}] (1).mp3`)), false);
 });
 
+test('organize-name lists larger candidates first and uses path order for equal sizes', async (t) => {
+  const folder = await fixture(t);
+  await put(path.join(folder, 'song (1).mp3'), 'a');
+  await put(path.join(folder, 'song (2).mp3'), 'largest');
+  await put(path.join(folder, 'song (3).mp3'), 'b');
+  await put(path.join(folder, 'song.mp3'), 'medium');
+
+  const result = await runInteractive(['organize-name', folder], '1');
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(result.stdout.split('\n').filter((line) => /^\d+\. /.test(line)), [
+    `1. song (2).mp3 | 7 B | ${folder}`,
+    `2. song.mp3 | 6 B | ${folder}`,
+    `3. song (1).mp3 | 1 B | ${folder}`,
+    `4. song (3).mp3 | 1 B | ${folder}`,
+  ]);
+  assert.equal(await fs.readFile(path.join(folder, 'song.mp3'), 'utf8'), 'largest');
+});
+
 test('organize-name skips a group after an invalid answer', async (t) => {
   const folder = await fixture(t);
   await put(path.join(folder, `song [${embeddedHash}].mp3`), 'same');

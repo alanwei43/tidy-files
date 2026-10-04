@@ -144,7 +144,7 @@ export async function organizeNames(folder: string, target?: string): Promise<vo
             const normalized = normalizeFileName(info.fileName);
             if (!normalized.hasHash && !normalized.hasDuplicateSuffix)
                 continue;
-            const candidates = getCandidates(info, FILES_INFO).sort((a, b) => compareText(a.fullPath, b.fullPath));
+            const candidates = getCandidates(info, FILES_INFO).sort((a, b) => b.size - a.size || compareText(a.fullPath, b.fullPath));
             const groupKey = candidates.map((candidate) => candidate.fullPath).join('\0');
             if (promptedGroups.has(groupKey))
                 continue;
