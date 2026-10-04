@@ -18,6 +18,8 @@
   "scripts": {
     "build": "tsc",
     "test": "npm run build && node --test test/*.test.mjs",
+    "login-user": "npm adduser --registry=https://registry.npmjs.org/",
+    "pub-pkg": "npm publish --access public --registry=https://registry.npmjs.org/",
     "prepack": "npm run build"
   },
   "engines": {

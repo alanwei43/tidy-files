@@ -88,6 +88,36 @@ test('ls-ext and rm-ext recurse, normalize case, and require --ext', async (t) =
   assert.equal(await present(path.join(folder, 'README')), true);
 });
 
+test('rm-ext moves matches to an in-tree target and excludes that target on rerun', async (t) => {
+  const folder = await fixture(t);
+  const target = path.join(folder, 'removed');
+  await put(path.join(folder, 'one.MP3'), 'first');
+  await put(path.join(folder, 'nested', 'two.mp3'), 'second');
+  await put(path.join(folder, 'nested', 'keep.flac'), 'keep');
+  const result = run('rm-ext', folder, '--ext', '.MP3', '--target', target);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(await present(path.join(folder, 'one.MP3')), false);
+  assert.equal(await present(path.join(folder, 'nested', 'two.mp3')), false);
+  assert.equal(await fs.readFile(path.join(target, 'one.MP3'), 'utf8'), 'first');
+  assert.equal(await fs.readFile(path.join(target, 'two.mp3'), 'utf8'), 'second');
+  assert.equal(await present(path.join(folder, 'nested', 'keep.flac')), true);
+  const rerun = run('rm-ext', folder, '--ext', 'mp3', '--target', target);
+  assert.equal(rerun.status, 0, rerun.stderr);
+  assert.equal(rerun.stdout.trim(), '');
+});
+
+test('rm-ext uses the content hash when target names collide', async (t) => {
+  const folder = await fixture(t);
+  const target = path.join(folder, 'removed');
+  await put(path.join(folder, 'a', 'song.mp3'), 'first');
+  await put(path.join(folder, 'b', 'song.mp3'), 'second');
+  const hash = createHash('md5').update('second').digest('hex');
+  const result = run('rm-ext', folder, '--ext', 'mp3', '--target', target);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(await fs.readFile(path.join(target, 'song.mp3'), 'utf8'), 'first');
+  assert.equal(await fs.readFile(path.join(target, `song [${hash}].mp3`), 'utf8'), 'second');
+});
+
 test('h2e moves only a leading hash and trim-name changes only edge whitespace', async (t) => {
   const folder = await fixture(t);
   await put(path.join(folder, `${embeddedHash} song.mp3`), 'song');

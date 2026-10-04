@@ -7,9 +7,10 @@ try {
         .scriptName('tidy-files')
         .usage('$0 <command> <folder> [options]')
         .command('ls-ext <folder>', '列出递归目录中的扩展名', (builder) => builder.positional('folder', { type: 'string', demandOption: true }), async (argv) => listExtensions(argv.folder))
-        .command('rm-ext <folder>', '按扩展名删除文件', (builder) => builder
+        .command('rm-ext <folder>', '按扩展名删除或移动文件', (builder) => builder
         .positional('folder', { type: 'string', demandOption: true })
-        .option('ext', { type: 'string', demandOption: true, describe: '逗号分隔的扩展名' }), async (argv) => removeExtensions(argv.folder, argv.ext))
+        .option('ext', { type: 'string', demandOption: true, describe: '逗号分隔的扩展名' })
+        .option('target', { type: 'string', describe: '移动匹配的文件到该目录' }), async (argv) => removeExtensions(argv.folder, argv.ext, argv.target))
         .command('h2e <folder>', '将文件名开头的 hash 移到末尾', (builder) => builder.positional('folder', { type: 'string', demandOption: true }), async (argv) => hashToEnd(argv.folder))
         .command('hash-repeat <folder>', '删除或移动内容重复的文件', (builder) => builder
         .positional('folder', { type: 'string', demandOption: true })

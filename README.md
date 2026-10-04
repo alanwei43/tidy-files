@@ -12,7 +12,7 @@ tidy-files --help
 | 命令 | 用途 |
 | --- | --- |
 | `tidy-files ls-ext <folder>` | 列出不重复的小写扩展名，包括“无扩展名” |
-| `tidy-files rm-ext <folder> --ext mp3,.flac` | 删除指定扩展名的文件；匹配不区分大小写 |
+| `tidy-files rm-ext <folder> --ext mp3,.flac [--target <target>]` | 删除或移动指定扩展名的文件；匹配不区分大小写 |
 | `tidy-files h2e <folder>` | 把开头的 32 位文件名 hash 移到扩展名前 |
 | `tidy-files hash-repeat <folder> [--target <target>]` | 按内容 MD5 和文件大小查重，删除或移动重复文件 |
 | `tidy-files flat-files <folder>` | 将子目录文件移到根目录，并删除空目录 |
@@ -20,6 +20,8 @@ tidy-files --help
 | `tidy-files organize-name <folder> [--target <target>]` | 交互选择保留文件，并清理 hash 与末尾重复编号 |
 
 `hash-repeat` 在同组文件中优先处理文件名带 hash 的文件，然后处理带 `(1)` 或 `（1）` 等编号的文件，再处理文件名较短的文件。仍然打平时，保留完整路径字典序最小的文件。
+
+`rm-ext` 未传 `--target` 时删除匹配的文件；传入后将它们移动到目标目录根层。
 
 移动文件时，目标目录已有同名文件，就使用 `<原文件名> [内容 MD5].<扩展名>`。如果这个名称也已存在，只有两者的 MD5 和大小都相同时才覆盖，否则报错。原地重命名遇到名称冲突时跳过并报告。
 

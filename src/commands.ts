@@ -13,19 +13,26 @@ export async function listExtensions(folder: string): Promise<void> {
     for (const extension of [...extensions].sort(compareText))
         console.log(extension);
 }
-export async function removeExtensions(folder: string, extensionList: string): Promise<void> {
+export async function removeExtensions(folder: string, extensionList: string, target?: string): Promise<void> {
     const extensions = extensionList.split(',').map((extension) => extension.trim().toLowerCase().replace(/^\./, ''));
     if (extensions.some((extension) => !extension || extension.includes('.'))) {
         throw new Error('--ext 必须是用逗号分隔的扩展名，例如 mp3,.flac');
     }
     const source = await ensureSourceFolder(folder);
-    const files = await scanFiles(source, undefined, false);
+    const destination = target ? await prepareTarget(source, target) : undefined;
+    const files = await scanFiles(source, destination, !!destination);
     const selected = new Set(extensions);
     for (const info of files.values()) {
         const extension = path.extname(info.fileName).slice(1).toLowerCase();
         if (extension && selected.has(extension)) {
-            await fs.unlink(info.fullPath);
-            console.log(`已删除: ${info.fullPath}`);
+            if (destination) {
+                const moved = await moveToTarget(info, destination);
+                console.log(`已移动: ${info.fullPath} -> ${moved}`);
+            }
+            else {
+                await fs.unlink(info.fullPath);
+                console.log(`已删除: ${info.fullPath}`);
+            }
         }
     }
 }
