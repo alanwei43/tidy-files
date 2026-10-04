@@ -1,6 +1,6 @@
 {
   "name": "@js-core/tidy-files",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A CLI for cleaning up duplicate music files",
   "type": "module",
   "main": "dist/index.js",
