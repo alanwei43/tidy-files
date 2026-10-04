@@ -11,7 +11,7 @@ tidy-files --help
 
 | 命令 | 用途 |
 | --- | --- |
-| `tidy-files ls-ext <folder>` | 列出不重复的小写扩展名，包括“无扩展名” |
+| `tidy-files ls-ext <folder>` | 列出小写扩展名及对应文件数，包括“无扩展名” |
 | `tidy-files rm-ext <folder> [--ext mp3,.flac] [--no-ext] [--target <target>]` | 删除或移动指定扩展名或无扩展名的文件；匹配不区分大小写 |
 | `tidy-files h2e <folder>` | 把开头的 32 位文件名 hash 移到扩展名前 |
 | `tidy-files hash-repeat <folder> [--target <target>]` | 按内容 MD5 和文件大小查重，删除或移动重复文件 |

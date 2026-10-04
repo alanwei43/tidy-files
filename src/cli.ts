@@ -6,7 +6,7 @@ try {
     await yargs(hideBin(process.argv))
         .scriptName('tidy-files')
         .usage('$0 <command> <folder> [options]')
-        .command('ls-ext <folder>', '列出递归目录中的扩展名', (builder) => builder.positional('folder', { type: 'string', demandOption: true }), async (argv) => listExtensions(argv.folder))
+        .command('ls-ext <folder>', '列出递归目录中的扩展名和文件数量', (builder) => builder.positional('folder', { type: 'string', demandOption: true }), async (argv) => listExtensions(argv.folder))
         .command('rm-ext <folder>', '按扩展名删除或移动文件', (builder) => builder
         .parserConfiguration({ 'boolean-negation': false })
         .positional('folder', { type: 'string', demandOption: true })

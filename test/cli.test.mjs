@@ -78,7 +78,7 @@ test('ls-ext and rm-ext recurse, normalize case, and require a selection', async
   await put(path.join(folder, 'README'), 'readme');
   const listed = run('ls-ext', folder);
   assert.equal(listed.status, 0, listed.stderr);
-  assert.deepEqual(listed.stdout.trim().split('\n'), ['.flac', '.mp3', '无扩展名']);
+  assert.deepEqual(listed.stdout.trim().split('\n'), ['.flac: 1', '.mp3: 2', '无扩展名: 1']);
   assert.notEqual(run('rm-ext', folder).status, 0);
   const removed = run('rm-ext', folder, '--ext', 'MP3,.flac');
   assert.equal(removed.status, 0, removed.stderr);

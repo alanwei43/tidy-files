@@ -9,9 +9,13 @@ function compareText(a: string, b: string): number {
 export async function listExtensions(folder: string): Promise<void> {
     const source = await ensureSourceFolder(folder);
     const files = await scanFiles(source, undefined, false);
-    const extensions = new Set([...files.values()].map((info) => path.extname(info.fileName).toLowerCase() || '无扩展名'));
-    for (const extension of [...extensions].sort(compareText))
-        console.log(extension);
+    const counts = new Map<string, number>();
+    for (const info of files.values()) {
+        const extension = path.extname(info.fileName).toLowerCase() || '无扩展名';
+        counts.set(extension, (counts.get(extension) ?? 0) + 1);
+    }
+    for (const extension of [...counts.keys()].sort(compareText))
+        console.log(`${extension}: ${counts.get(extension)}`);
 }
 export async function removeExtensions(folder: string, extensionList?: string, target?: string, noExtension = false): Promise<void> {
     if (extensionList === undefined && !noExtension)
