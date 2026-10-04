@@ -1,9 +1,9 @@
 # tidy-files
 
-递归清理音乐文件的 Node.js 命令行工具。npm 包名为 `@alanwei/tidy-files`，命令名为 `tidy-files`。需要 Node.js 22 或更新版本。
+递归清理音乐文件的 Node.js 命令行工具。npm 包名为 `@js-core/tidy-files`，命令名为 `tidy-files`。需要 Node.js 22 或更新版本。
 
 ```bash
-npm install -g @alanwei/tidy-files
+npm install -g @js-core/tidy-files
 tidy-files --help
 ```
 
@@ -35,4 +35,4 @@ npm test
 npm pack --dry-run
 ```
 
-推送到 `master` 会运行 GitHub Actions 测试。如果 `package.json` 中的版本还未发布，工作流使用 Repository secret `NPM_ACCESS_TOKEN` 发布到 npm；已发布版本会跳过。发布前需在 GitHub 仓库设置中添加该 secret，并确保 token 有 `@alanwei/tidy-files` 的发布权限。
+推送到 `master` 会运行 GitHub Actions 测试。如果 `package.json` 中的版本还未发布，工作流使用 Repository secret `NPM_ACCESS_TOKEN` 发布到 npm；已发布版本会跳过。发布前需在 GitHub 仓库设置中添加该 secret，并确保 token 有 `@js-core/tidy-files` 的发布权限。

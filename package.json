@@ -1,5 +1,5 @@
 {
-  "name": "@alanwei/tidy-files",
+  "name": "@js-core/tidy-files",
   "version": "0.1.0",
   "description": "A CLI for cleaning up duplicate music files",
   "type": "module",
