@@ -307,7 +307,10 @@ test('organize-name keeps the selected file, moves the rest, and removes both ma
   await put(path.join(folder, 'song.mp3'), 'other');
   const result = await runInteractive(['organize-name', folder, '--target', target], '1');
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /1\. .* \| \d+ B \| /);
+  const hash = createHash('md5').update('chosen').digest('hex');
+  assert.ok(result.stdout.includes('序号 | hash | 文件大小 | 文件名 | 文件路径\n'), result.stdout);
+  assert.ok(result.stdout.includes(`1 | ${hash} | 6B(6B) | song [${embeddedHash}] (1).mp3 | ${path.join(folder, `song [${embeddedHash}] (1).mp3`)}`), result.stdout);
+  assert.ok(result.stdout.includes('保留1个文件，移动1个文件\n\n'), result.stdout);
   assert.equal(await fs.readFile(path.join(folder, 'song.mp3'), 'utf8'), 'chosen');
   assert.equal(await fs.readFile(path.join(target, 'song.mp3'), 'utf8'), 'other');
   assert.equal(await present(path.join(folder, `song [${embeddedHash}] (1).mp3`)), false);
@@ -322,13 +325,29 @@ test('organize-name lists larger candidates first and uses path order for equal 
 
   const result = await runInteractive(['organize-name', folder], '1');
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(result.stdout.split('\n').filter((line) => /^\d+\. /.test(line)), [
-    `1. song (2).mp3 | 7 B | ${folder}`,
-    `2. song.mp3 | 6 B | ${folder}`,
-    `3. song (1).mp3 | 1 B | ${folder}`,
-    `4. song (3).mp3 | 1 B | ${folder}`,
+  assert.deepEqual(result.stdout.split('\n').filter((line) => /^\d+ \| /.test(line)), [
+    `1 | ${createHash('md5').update('largest').digest('hex')} | 7B(7B) | song (2).mp3 | ${path.join(folder, 'song (2).mp3')}`,
+    `2 | ${createHash('md5').update('medium').digest('hex')} | 6B(6B) | song.mp3 | ${path.join(folder, 'song.mp3')}`,
+    `3 | ${createHash('md5').update('a').digest('hex')} | 1B(1B) | song (1).mp3 | ${path.join(folder, 'song (1).mp3')}`,
+    `4 | ${createHash('md5').update('b').digest('hex')} | 1B(1B) | song (3).mp3 | ${path.join(folder, 'song (3).mp3')}`,
   ]);
+  assert.ok(result.stdout.includes('保留1个文件，删除3个文件\n\n'), result.stdout);
   assert.equal(await fs.readFile(path.join(folder, 'song.mp3'), 'utf8'), 'largest');
+});
+
+test('interactive commands show human size and exact bytes', async (t) => {
+  for (const command of ['organize-name', 'keep-repeat']) {
+    const folder = await fixture(t);
+    await put(path.join(folder, 'track (1).mp3'), Buffer.alloc(3_365_929, 1));
+    await put(path.join(folder, 'track.mp3'), Buffer.alloc(1024, 2));
+    await put(path.join(folder, 'track (2).mp3'), Buffer.alloc(0));
+
+    const result = await runInteractive([command, folder], '1');
+    assert.equal(result.status, 0, `${command}: ${result.stderr}`);
+    assert.ok(result.stdout.includes(`| 3.21MB(3365929B) | track (1).mp3 | ${path.join(folder, 'track (1).mp3')}`), result.stdout);
+    assert.ok(result.stdout.includes(`| 1.00KB(1024B) | track.mp3 | ${path.join(folder, 'track.mp3')}`), result.stdout);
+    assert.ok(result.stdout.includes(`| 0B(0B) | track (2).mp3 | ${path.join(folder, 'track (2).mp3')}`), result.stdout);
+  }
 });
 
 test('organize-name skips a group after an invalid answer', async (t) => {
@@ -348,6 +367,7 @@ test('organize-name deletes unselected files when no target is given', async (t)
   await put(path.join(folder, 'song.mp3'), 'other');
   const result = await runInteractive(['organize-name', folder], '1');
   assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.stdout.includes('保留1个文件，删除1个文件\n\n'), result.stdout);
   assert.equal(await fs.readFile(path.join(folder, 'song.mp3'), 'utf8'), 'chosen');
   assert.equal(await present(path.join(folder, 'song (1).mp3')), false);
 });
@@ -363,12 +383,14 @@ test('keep-repeat combines hash and name matches, moves unselected files, and re
   const result = await runInteractive(['keep-repeat', folder, '--target', target], '1, 3');
   assert.equal(result.status, 0, result.stderr);
   const hash = createHash('md5').update('longest').digest('hex');
-  assert.deepEqual(result.stdout.split('\n').filter((line) => /^\d+\. /.test(line)), [
-    `1. ${hash} | alpha (1).mp3 | 7 B | ${folder}`,
-    `2. ${hash} | other.mp3 | 7 B | ${folder}`,
-    `3. ${createHash('md5').update('medium').digest('hex')} | alpha live.flac | 6 B | ${folder}`,
-    `4. ${createHash('md5').update('short').digest('hex')} | alpha.mp3 | 5 B | ${folder}`,
+  assert.ok(result.stdout.includes('序号 | hash | 文件大小 | 文件名 | 文件路径\n'), result.stdout);
+  assert.deepEqual(result.stdout.split('\n').filter((line) => /^\d+ \| /.test(line)), [
+    `1 | ${hash} | 7B(7B) | alpha (1).mp3 | ${path.join(folder, 'alpha (1).mp3')}`,
+    `2 | ${hash} | 7B(7B) | other.mp3 | ${path.join(folder, 'other.mp3')}`,
+    `3 | ${createHash('md5').update('medium').digest('hex')} | 6B(6B) | alpha live.flac | ${path.join(folder, 'alpha live.flac')}`,
+    `4 | ${createHash('md5').update('short').digest('hex')} | 5B(5B) | alpha.mp3 | ${path.join(folder, 'alpha.mp3')}`,
   ]);
+  assert.ok(result.stdout.includes('保留2个文件，移动2个文件\n\n'), result.stdout);
   assert.equal(await fs.readFile(path.join(folder, 'alpha.mp3'), 'utf8'), 'longest');
   assert.equal(await fs.readFile(path.join(folder, 'alpha live.flac'), 'utf8'), 'medium');
   assert.equal(await fs.readFile(path.join(target, 'alpha.mp3'), 'utf8'), 'short');
@@ -383,6 +405,8 @@ test('keep-repeat allows a later round to delete a file kept earlier', async (t)
   const result = await runInteractive(['keep-repeat', folder], ['1 2', '2']);
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout.match(/输入要保留的文件序号/g)?.length, 2);
+  assert.ok(result.stdout.includes('保留2个文件，删除0个文件\n\n'), result.stdout);
+  assert.ok(result.stdout.includes('保留1个文件，删除1个文件\n\n'), result.stdout);
   assert.equal(await present(path.join(folder, 'a.mp3')), false);
   assert.equal(await fs.readFile(path.join(folder, 'ab.mp3'), 'utf8'), 'same');
 });

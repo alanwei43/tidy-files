@@ -8,6 +8,25 @@ function compareText(a: string, b: string): number {
 function compareCandidates(a: FileInfo, b: FileInfo): number {
     return b.size - a.size || compareText(a.fullPath, b.fullPath);
 }
+function formatFileSize(size: number): string {
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let value = size;
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+        value /= 1024;
+        unit += 1;
+    }
+    const humanSize = unit === 0 ? `${size}B` : `${value.toFixed(2)}${units[unit]}`;
+    return `${humanSize}(${size}B)`;
+}
+function printCandidates(candidates: FileInfo[]): void {
+    console.log('序号 | hash | 文件大小 | 文件名 | 文件路径');
+    for (const [index, candidate] of candidates.entries())
+        console.log(`${index + 1} | ${candidate.hash} | ${formatFileSize(candidate.size)} | ${candidate.fileName} | ${candidate.fullPath}`);
+}
+function printSelectionSummary(kept: number, processed: number, moved: boolean): void {
+    console.log(`保留${kept}个文件，${moved ? '移动' : '删除'}${processed}个文件\n`);
+}
 export async function listExtensions(folder: string): Promise<void> {
     const source = await ensureSourceFolder(folder);
     const files = await scanFiles(source, undefined, false);
@@ -152,9 +171,7 @@ export async function organizeNames(folder: string, target?: string): Promise<vo
             if (promptedGroups.has(groupKey))
                 continue;
             promptedGroups.add(groupKey);
-            for (const [index, candidate] of candidates.entries()) {
-                console.log(`${index + 1}. ${candidate.fileName} | ${candidate.size} B | ${candidate.directory}`);
-            }
+            printCandidates(candidates);
             let answer;
             try {
                 answer = (await input.question('输入要保留的文件序号（回车跳过）: ')).trim();
@@ -199,6 +216,7 @@ export async function organizeNames(folder: string, target?: string): Promise<vo
                 });
                 console.log(`${selected.fullPath} -> ${renamed}`);
             }
+            printSelectionSummary(1, candidates.length - 1, !!destination);
         }
     }
     finally {
@@ -261,8 +279,7 @@ export async function keepRepeatedFiles(folder: string, target?: string): Promis
             const normalized = normalizeFileName(info.fileName);
             if (candidates.length === 1 && !normalized.hasHash && !normalized.hasDuplicateSuffix)
                 continue;
-            for (const [index, candidate] of candidates.entries())
-                console.log(`${index + 1}. ${candidate.hash} | ${candidate.fileName} | ${candidate.size} B | ${candidate.directory}`);
+            printCandidates(candidates);
             const response = await askKeepRepeatSelection(input);
             if (response === undefined)
                 break;
@@ -302,6 +319,7 @@ export async function keepRepeatedFiles(folder: string, target?: string): Promis
                 files.set(renamed, { ...candidate, fullPath: renamed, fileName: cleanedName });
                 console.log(`${candidate.fullPath} -> ${renamed}`);
             }
+            printSelectionSummary(selectedIndexes.size, candidates.length - selectedIndexes.size, !!destination);
         }
     }
     finally {
