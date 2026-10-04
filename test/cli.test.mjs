@@ -12,6 +12,7 @@ const project = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const cli = path.join(project, 'dist', 'cli.js');
 const embeddedHash = '638e29d7d72ffa2611c10a7e0eb97282';
 const testCwd = await fs.mkdtemp(path.join(os.tmpdir(), 'tidy-files-test-cwd-'));
+const testEnv = { ...process.env, HOME: testCwd, USERPROFILE: testCwd };
 after(() => fs.rm(testCwd, { recursive: true, force: true }));
 
 async function fixture(t) {
@@ -36,7 +37,11 @@ async function present(filePath) {
 }
 
 function run(...args) {
-  return spawnSync(process.execPath, [cli, ...args], { cwd: testCwd, encoding: 'utf8' });
+  return spawnSync(process.execPath, [cli, ...args], { cwd: testCwd, env: testEnv, encoding: 'utf8' });
+}
+
+function cacheFile(filePath) {
+  return path.join(testCwd, '.tidy-files-caches', createHash('md5').update(filePath).digest('hex'));
 }
 
 test('--help displays the current package version', async () => {
@@ -46,10 +51,10 @@ test('--help displays the current package version', async () => {
   assert.ok(result.stdout.includes(`版本：${version}`), result.stdout);
 });
 
-test('commands append timestamped progress logs and exclude the log from scanning', async (t) => {
+test('commands do not create log files', async (t) => {
   const folder = await fixture(t);
   const logPath = path.join(folder, 'tidy-files.log');
-  const runHere = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: folder, encoding: 'utf8' });
+  const runHere = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: folder, env: testEnv, encoding: 'utf8' });
   await put(path.join(folder, 'nested', 'song.MP3'), 'music');
 
   assert.equal(runHere('--help').status, 0);
@@ -59,30 +64,18 @@ test('commands append timestamped progress logs and exclude the log from scannin
   const listed = runHere('ls-ext', folder);
   assert.equal(listed.status, 0, listed.stderr);
   assert.equal(listed.stdout.trim(), '.mp3: 1');
-  const removed = runHere('rm-ext', folder, '--ext', 'mp3,log');
+  const removed = runHere('rm-ext', folder, '--ext', 'mp3');
   assert.equal(removed.status, 0, removed.stderr);
   assert.equal(await present(path.join(folder, 'nested', 'song.MP3')), false);
-  assert.equal(await present(logPath), true);
-
-  const lines = (await fs.readFile(logPath, 'utf8')).trim().split('\n');
-  assert.ok(lines.every((line) => /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] .+/.test(line)));
-  assert.ok(lines.some((line) => line.includes(`进入文件夹 ${folder}`)));
-  assert.ok(lines.some((line) => line.includes(`正在处理文件 ${path.join(folder, 'nested', 'song.MP3')}`)));
-  assert.ok(lines.some((line) => line.includes('匹配结果') && line.includes('匹配 (.mp3)')));
-  assert.ok(lines.some((line) => line.includes('已删除文件') && line.includes('song.MP3')));
-  assert.equal(lines.filter((line) => line.includes('开始执行')).length, 2);
-  assert.equal(lines.some((line) => line.includes(`正在处理文件 ${logPath}`)), false);
-
-  assert.equal(runHere('--help').status, 0);
-  assert.equal(runHere('--version').status, 0);
-  assert.equal(await fs.readFile(logPath, 'utf8'), `${lines.join('\n')}\n`);
+  await put(path.join(folder, 'another.mp3'), 'music');
+  assert.equal(runHere('hash-repeat', folder).status, 0);
   assert.notEqual(runHere('rm-ext', folder).status, 0);
-  assert.match(await fs.readFile(logPath, 'utf8'), /执行失败 rm-ext: 必须提供 --ext 或 --no-ext/);
+  assert.equal(await present(logPath), false);
 });
 
 function runInteractive(args, response) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [cli, ...args], { cwd: testCwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [cli, ...args], { cwd: testCwd, env: testEnv, stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     let answered = false;
@@ -295,4 +288,86 @@ test('a conflicting in-place rename is skipped without overwriting', async (t) =
   assert.match(result.stderr, /重命名冲突/);
   assert.equal(await fs.readFile(path.join(folder, 'song.mp3'), 'utf8'), 'existing');
   assert.equal(await fs.readFile(path.join(folder, '  song.mp3'), 'utf8'), 'trimmed');
+});
+
+test('content hashes use matching cache metadata and refresh invalid entries', async (t) => {
+  const folder = await fixture(t);
+  const filePath = path.join(folder, 'song.mp3');
+  const actualHash = createHash('md5').update('first').digest('hex');
+  const otherHash = createHash('md5').update('other').digest('hex');
+  await put(filePath, 'first');
+
+  assert.equal(run('hash-repeat', folder).status, 0);
+  const cachePath = cacheFile(filePath);
+  const entry = JSON.parse(await fs.readFile(cachePath, 'utf8'));
+  const stat = await fs.stat(filePath);
+  assert.deepEqual(entry, {
+    filePath,
+    size: stat.size,
+    createAt: stat.birthtime.toISOString(),
+    modifiedAt: stat.mtime.toISOString(),
+    hash: actualHash,
+  });
+
+  await fs.writeFile(cachePath, JSON.stringify({ ...entry, hash: otherHash }));
+  assert.equal(run('hash-repeat', folder).status, 0);
+  assert.equal(JSON.parse(await fs.readFile(cachePath, 'utf8')).hash, otherHash);
+
+  for (const change of [
+    { filePath: `${filePath}.different` },
+    { size: stat.size + 1 },
+    { createAt: '2000-01-01T00:00:00.000Z' },
+    { modifiedAt: '2000-01-01T00:00:00.000Z' },
+  ]) {
+    await fs.writeFile(cachePath, JSON.stringify({ ...entry, ...change, hash: otherHash }));
+    assert.equal(run('hash-repeat', folder).status, 0);
+    assert.equal(JSON.parse(await fs.readFile(cachePath, 'utf8')).hash, actualHash);
+  }
+
+  await fs.writeFile(cachePath, 'invalid json');
+  assert.equal(run('hash-repeat', folder).status, 0);
+  assert.equal(JSON.parse(await fs.readFile(cachePath, 'utf8')).hash, actualHash);
+
+  await fs.writeFile(filePath, 'other');
+  const changed = new Date(stat.mtimeMs + 5000);
+  await fs.utimes(filePath, changed, changed);
+  assert.equal(run('hash-repeat', folder).status, 0);
+  assert.equal(JSON.parse(await fs.readFile(cachePath, 'utf8')).hash, otherHash);
+});
+
+test('moves and deletes maintain path-specific hash caches', async (t) => {
+  const folder = await fixture(t);
+  const oldPath = path.join(folder, 'nested', 'song.mp3');
+  const movedPath = path.join(folder, 'song.mp3');
+  await put(oldPath, 'nested');
+  assert.equal(run('flat-files', folder).status, 0);
+  assert.equal(await present(cacheFile(oldPath)), false);
+  assert.equal(JSON.parse(await fs.readFile(cacheFile(movedPath), 'utf8')).hash,
+    createHash('md5').update('nested').digest('hex'));
+
+  assert.equal(run('rm-ext', folder, '--ext', 'mp3').status, 0);
+  assert.equal(await present(cacheFile(movedPath)), false);
+
+  const spacedPath = path.join(folder, '  track.mp3');
+  const trimmedPath = path.join(folder, 'track.mp3');
+  await put(spacedPath, 'track');
+  assert.equal(run('hash-repeat', folder).status, 0);
+  assert.equal(await present(cacheFile(spacedPath)), true);
+  assert.equal(run('trim-name', folder).status, 0);
+  assert.equal(await present(cacheFile(spacedPath)), false);
+  assert.equal(JSON.parse(await fs.readFile(cacheFile(trimmedPath), 'utf8')).hash,
+    createHash('md5').update('track').digest('hex'));
+});
+
+test('an unavailable cache directory does not stop content hashing', async (t) => {
+  const folder = await fixture(t);
+  const home = await fixture(t);
+  await put(path.join(home, '.tidy-files-caches'), 'blocked');
+  await put(path.join(folder, 'song.mp3'), 'music');
+  const result = spawnSync(process.execPath, [cli, 'hash-repeat', folder], {
+    cwd: testCwd,
+    env: { ...testEnv, HOME: home, USERPROFILE: home },
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr);
 });
