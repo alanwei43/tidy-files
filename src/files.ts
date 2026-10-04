@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { constants, promises as fs, type Stats } from 'node:fs';
 import path from 'node:path';
+import { noLog, type Log } from './log.js';
 export type FileInfo = {
     stat: Stats;
     fullPath: string;
@@ -40,21 +41,25 @@ export async function contentHash(filePath: string): Promise<string> {
         hash.update(chunk);
     return hash.digest('hex');
 }
-export async function scanFiles(folder: string, excludedDirectory?: string, includeHash = true): Promise<Map<string, FileInfo>> {
+export async function scanFiles(folder: string, excludedDirectory?: string, includeHash = true, log: Log = noLog): Promise<Map<string, FileInfo>> {
     const files = new Map<string, FileInfo>();
     async function visit(directory: string): Promise<void> {
         if (excludedDirectory && isWithin(excludedDirectory, directory))
             return;
+        await log.write(`进入文件夹 ${directory}`);
         const entries = (await fs.readdir(directory, { withFileTypes: true }))
             .sort((a, b) => compareText(a.name, b.name));
         for (const entry of entries) {
             const fullPath = path.join(directory, entry.name);
+            if (fullPath === log.filePath)
+                continue;
             if (entry.isSymbolicLink())
                 continue;
             if (entry.isDirectory()) {
                 await visit(fullPath);
             }
             else if (entry.isFile()) {
+                await log.write(`正在处理文件 ${fullPath}`);
                 const stat = await fs.stat(fullPath);
                 files.set(fullPath, {
                     stat,
@@ -142,7 +147,7 @@ export async function renameInPlace(info: FileInfo, newFileName: string): Promis
     await fs.rename(info.fullPath, destination);
     return destination;
 }
-export async function removeEmptySubdirectories(folder: string): Promise<void> {
+export async function removeEmptySubdirectories(folder: string, log: Log = noLog): Promise<void> {
     async function visit(directory: string): Promise<void> {
         const entries = await fs.readdir(directory, { withFileTypes: true });
         for (const entry of entries) {
@@ -152,6 +157,7 @@ export async function removeEmptySubdirectories(folder: string): Promise<void> {
         if (directory !== folder) {
             try {
                 await fs.rmdir(directory);
+                await log.write(`已删除空文件夹 ${directory}`);
             }
             catch (error) {
                 const code = (error as NodeJS.ErrnoException).code;

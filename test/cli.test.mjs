@@ -4,13 +4,15 @@ import { spawn, spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { resolveHashFileName } from '../dist/index.js';
 
 const project = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const cli = path.join(project, 'dist', 'cli.js');
 const embeddedHash = '638e29d7d72ffa2611c10a7e0eb97282';
+const testCwd = await fs.mkdtemp(path.join(os.tmpdir(), 'tidy-files-test-cwd-'));
+after(() => fs.rm(testCwd, { recursive: true, force: true }));
 
 async function fixture(t) {
   const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'tidy-files-'));
@@ -34,7 +36,7 @@ async function present(filePath) {
 }
 
 function run(...args) {
-  return spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+  return spawnSync(process.execPath, [cli, ...args], { cwd: testCwd, encoding: 'utf8' });
 }
 
 test('--help displays the current package version', async () => {
@@ -44,9 +46,43 @@ test('--help displays the current package version', async () => {
   assert.ok(result.stdout.includes(`版本：${version}`), result.stdout);
 });
 
+test('commands append timestamped progress logs and exclude the log from scanning', async (t) => {
+  const folder = await fixture(t);
+  const logPath = path.join(folder, 'tidy-files.log');
+  const runHere = (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: folder, encoding: 'utf8' });
+  await put(path.join(folder, 'nested', 'song.MP3'), 'music');
+
+  assert.equal(runHere('--help').status, 0);
+  assert.equal(runHere('--version').status, 0);
+  assert.equal(await present(logPath), false);
+
+  const listed = runHere('ls-ext', folder);
+  assert.equal(listed.status, 0, listed.stderr);
+  assert.equal(listed.stdout.trim(), '.mp3: 1');
+  const removed = runHere('rm-ext', folder, '--ext', 'mp3,log');
+  assert.equal(removed.status, 0, removed.stderr);
+  assert.equal(await present(path.join(folder, 'nested', 'song.MP3')), false);
+  assert.equal(await present(logPath), true);
+
+  const lines = (await fs.readFile(logPath, 'utf8')).trim().split('\n');
+  assert.ok(lines.every((line) => /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] .+/.test(line)));
+  assert.ok(lines.some((line) => line.includes(`进入文件夹 ${folder}`)));
+  assert.ok(lines.some((line) => line.includes(`正在处理文件 ${path.join(folder, 'nested', 'song.MP3')}`)));
+  assert.ok(lines.some((line) => line.includes('匹配结果') && line.includes('匹配 (.mp3)')));
+  assert.ok(lines.some((line) => line.includes('已删除文件') && line.includes('song.MP3')));
+  assert.equal(lines.filter((line) => line.includes('开始执行')).length, 2);
+  assert.equal(lines.some((line) => line.includes(`正在处理文件 ${logPath}`)), false);
+
+  assert.equal(runHere('--help').status, 0);
+  assert.equal(runHere('--version').status, 0);
+  assert.equal(await fs.readFile(logPath, 'utf8'), `${lines.join('\n')}\n`);
+  assert.notEqual(runHere('rm-ext', folder).status, 0);
+  assert.match(await fs.readFile(logPath, 'utf8'), /执行失败 rm-ext: 必须提供 --ext 或 --no-ext/);
+});
+
 function runInteractive(args, response) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [cli, ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [cli, ...args], { cwd: testCwd, stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     let answered = false;
