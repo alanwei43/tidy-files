@@ -37,6 +37,13 @@ function run(...args) {
   return spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
 }
 
+test('--help displays the current package version', async () => {
+  const { version } = JSON.parse(await fs.readFile(path.join(project, 'package.json'), 'utf8'));
+  const result = run('--help');
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.stdout.includes(`版本：${version}`), result.stdout);
+});
+
 function runInteractive(args, response) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [cli, ...args], { stdio: ['pipe', 'pipe', 'pipe'] });

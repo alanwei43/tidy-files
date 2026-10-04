@@ -23,4 +23,4 @@ jobs:
       - run: npm ci
       - run: npm test
       - name: Publish
-        run: npm publish --access public
+        run: npm run build && npm publish --access public

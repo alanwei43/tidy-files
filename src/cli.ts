@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { flattenFiles, hashToEnd, listExtensions, organizeNames, removeExtensions, removeRepeatedHashes, trimNames, } from './commands.js';
+const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
 try {
     await yargs(hideBin(process.argv))
         .scriptName('tidy-files')
@@ -24,6 +26,8 @@ try {
         .option('target', { type: 'string', describe: '移动未选中的文件到该目录' }), async (argv) => organizeNames(argv.folder, argv.target))
         .demandCommand(1)
         .strict()
+        .epilogue(`版本：${version}`)
+        .version('version', '显示版本号', version)
         .help()
         .parseAsync();
 }
