@@ -8,9 +8,11 @@ try {
         .usage('$0 <command> <folder> [options]')
         .command('ls-ext <folder>', '列出递归目录中的扩展名', (builder) => builder.positional('folder', { type: 'string', demandOption: true }), async (argv) => listExtensions(argv.folder))
         .command('rm-ext <folder>', '按扩展名删除或移动文件', (builder) => builder
+        .parserConfiguration({ 'boolean-negation': false })
         .positional('folder', { type: 'string', demandOption: true })
-        .option('ext', { type: 'string', demandOption: true, describe: '逗号分隔的扩展名' })
-        .option('target', { type: 'string', describe: '移动匹配的文件到该目录' }), async (argv) => removeExtensions(argv.folder, argv.ext, argv.target))
+        .option('ext', { type: 'string', describe: '逗号分隔的扩展名' })
+        .option('no-ext', { type: 'boolean', describe: '匹配没有扩展名的文件' })
+        .option('target', { type: 'string', describe: '移动匹配的文件到该目录' }), async (argv) => removeExtensions(argv.folder, argv.ext, argv.target, argv.noExt))
         .command('h2e <folder>', '将文件名开头的 hash 移到末尾', (builder) => builder.positional('folder', { type: 'string', demandOption: true }), async (argv) => hashToEnd(argv.folder))
         .command('hash-repeat <folder>', '删除或移动内容重复的文件', (builder) => builder
         .positional('folder', { type: 'string', demandOption: true })

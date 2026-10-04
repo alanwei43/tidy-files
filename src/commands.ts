@@ -13,8 +13,10 @@ export async function listExtensions(folder: string): Promise<void> {
     for (const extension of [...extensions].sort(compareText))
         console.log(extension);
 }
-export async function removeExtensions(folder: string, extensionList: string, target?: string): Promise<void> {
-    const extensions = extensionList.split(',').map((extension) => extension.trim().toLowerCase().replace(/^\./, ''));
+export async function removeExtensions(folder: string, extensionList?: string, target?: string, noExtension = false): Promise<void> {
+    if (extensionList === undefined && !noExtension)
+        throw new Error('必须提供 --ext 或 --no-ext');
+    const extensions = extensionList === undefined ? [] : extensionList.split(',').map((extension) => extension.trim().toLowerCase().replace(/^\./, ''));
     if (extensions.some((extension) => !extension || extension.includes('.'))) {
         throw new Error('--ext 必须是用逗号分隔的扩展名，例如 mp3,.flac');
     }
@@ -23,8 +25,8 @@ export async function removeExtensions(folder: string, extensionList: string, ta
     const files = await scanFiles(source, destination, !!destination);
     const selected = new Set(extensions);
     for (const info of files.values()) {
-        const extension = path.extname(info.fileName).slice(1).toLowerCase();
-        if (extension && selected.has(extension)) {
+        const extension = path.extname(info.fileName).toLowerCase();
+        if ((!extension && noExtension) || selected.has(extension.slice(1))) {
             if (destination) {
                 const moved = await moveToTarget(info, destination);
                 console.log(`已移动: ${info.fullPath} -> ${moved}`);

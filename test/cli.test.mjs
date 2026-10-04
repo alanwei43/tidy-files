@@ -70,7 +70,7 @@ test('resolveHashFileName supports the documented prefix, suffix, and path forms
   assert.equal(resolveHashFileName('song deadbeef.mp3'), false);
 });
 
-test('ls-ext and rm-ext recurse, normalize case, and require --ext', async (t) => {
+test('ls-ext and rm-ext recurse, normalize case, and require a selection', async (t) => {
   const folder = await fixture(t);
   await put(path.join(folder, 'one.MP3'), 'one');
   await put(path.join(folder, 'nested', 'two.mp3'), 'two');
@@ -88,20 +88,36 @@ test('ls-ext and rm-ext recurse, normalize case, and require --ext', async (t) =
   assert.equal(await present(path.join(folder, 'README')), true);
 });
 
+test('rm-ext --no-ext deletes files without an extension', async (t) => {
+  const folder = await fixture(t);
+  await put(path.join(folder, 'README'), 'readme');
+  await put(path.join(folder, 'nested', '.gitignore'), 'ignored');
+  await put(path.join(folder, 'nested', 'keep.mp3'), 'music');
+  await put(path.join(folder, 'trailing.'), 'trailing dot');
+  const result = run('rm-ext', folder, '--no-ext');
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(await present(path.join(folder, 'README')), false);
+  assert.equal(await present(path.join(folder, 'nested', '.gitignore')), false);
+  assert.equal(await present(path.join(folder, 'nested', 'keep.mp3')), true);
+  assert.equal(await present(path.join(folder, 'trailing.')), true);
+});
+
 test('rm-ext moves matches to an in-tree target and excludes that target on rerun', async (t) => {
   const folder = await fixture(t);
   const target = path.join(folder, 'removed');
   await put(path.join(folder, 'one.MP3'), 'first');
   await put(path.join(folder, 'nested', 'two.mp3'), 'second');
+  await put(path.join(folder, 'nested', 'README'), 'readme');
   await put(path.join(folder, 'nested', 'keep.flac'), 'keep');
-  const result = run('rm-ext', folder, '--ext', '.MP3', '--target', target);
+  const result = run('rm-ext', folder, '--ext', '.MP3', '--no-ext', '--target', target);
   assert.equal(result.status, 0, result.stderr);
   assert.equal(await present(path.join(folder, 'one.MP3')), false);
   assert.equal(await present(path.join(folder, 'nested', 'two.mp3')), false);
   assert.equal(await fs.readFile(path.join(target, 'one.MP3'), 'utf8'), 'first');
   assert.equal(await fs.readFile(path.join(target, 'two.mp3'), 'utf8'), 'second');
+  assert.equal(await fs.readFile(path.join(target, 'README'), 'utf8'), 'readme');
   assert.equal(await present(path.join(folder, 'nested', 'keep.flac')), true);
-  const rerun = run('rm-ext', folder, '--ext', 'mp3', '--target', target);
+  const rerun = run('rm-ext', folder, '--ext', 'mp3', '--no-ext', '--target', target);
   assert.equal(rerun.status, 0, rerun.stderr);
   assert.equal(rerun.stdout.trim(), '');
 });
