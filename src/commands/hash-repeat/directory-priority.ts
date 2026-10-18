@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { createInterface, type Interface } from 'node:readline';
+import type { FileInfo } from '../../common/files/file-info.js';
 
 // Owns both the persisted order and the questions needed to complete it.
 export class DirectoryPriority {
@@ -80,7 +81,7 @@ export class DirectoryPriority {
             });
             this.input.on('SIGINT', this.onInterrupt);
         }
-        process.stdout.write('输入优先保留的目录序号（1 或 2）: ');
+        process.stdout.write('输入优先保留的目录序号（1 或 2），或 R 重新加载优先级文件: ');
         const answer = this.answers.length ? this.answers.shift()
             : this.closed ? undefined
             : await new Promise<string | undefined>((resolve) => { this.waiting = resolve; });
@@ -89,16 +90,25 @@ export class DirectoryPriority {
         return answer.trim();
     }
 
-    private async compare(first: string, second: string): Promise<void> {
+    private async compare(first: string, second: string, files: FileInfo[]): Promise<void> {
         let directories = await this.read();
         if (directories.includes(first) && directories.includes(second))
             return;
-        console.log(`需要确定目录优先级:\n1. ${first}\n2. ${second}`);
+        console.log('需要确定目录优先级:');
+        for (const [index, directory] of [first, second].entries()) {
+            console.log(`${index + 1}. ${directory}`);
+            for (const file of files.filter((info) => info.directory === directory))
+                console.log(`   文件: ${file.fileName}`);
+        }
+        console.log('R - 重新加载优先级文件');
         let answer = await this.answer();
-        while (answer !== '1' && answer !== '2') {
-            console.error('输入无效，请输入 1 或 2');
+        while (answer !== '1' && answer !== '2' && answer.toLowerCase() !== 'r') {
+            console.error('输入无效，请输入 1、2 或 R');
             answer = await this.answer();
         }
+        // Re-evaluate the entire group using the latest order in preferredDirectory.
+        if (answer.toLowerCase() === 'r')
+            return;
         // Manual edits made while waiting take precedence over the old question.
         directories = await this.read();
         if (directories.includes(first) && directories.includes(second))
@@ -116,7 +126,8 @@ export class DirectoryPriority {
         await this.write(directories);
     }
 
-    async preferredDirectory(directories: string[]): Promise<string> {
+    async preferredDirectory(files: FileInfo[]): Promise<string> {
+        const directories = [...new Set(files.map((info) => info.directory))];
         while (true) {
             // This also rechecks the complete order immediately before returning
             // a winner, rather than retaining rankings from earlier questions.
@@ -125,7 +136,7 @@ export class DirectoryPriority {
             const missing = directories.find((directory) => directory !== first && !order.includes(directory));
             if (missing === undefined && order.includes(first))
                 return first;
-            await this.compare(first, missing!);
+            await this.compare(first, missing!, files);
         }
     }
 

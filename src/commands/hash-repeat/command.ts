@@ -42,7 +42,7 @@ export async function removeRepeatedHashes(folder: string, target?: string, dirP
                 continue;
             const directories = [...new Set(group.map((info) => info.directory))];
             const preferred = priority && directories.length > 1
-                ? await priority.preferredDirectory(directories) : undefined;
+                ? await priority.preferredDirectory(group) : undefined;
             checkInterrupted();
             const keep = group.filter((info) => preferred === undefined || info.directory === preferred)
                 .sort(removalPriority).at(-1)!;

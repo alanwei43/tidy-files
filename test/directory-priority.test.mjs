@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const cli = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
 const hash = '638e29d7d72ffa2611c10a7e0eb97282';
-const prompt = '输入优先保留的目录序号（1 或 2）: ';
+const prompt = '输入优先保留的目录序号（1 或 2），或 R 重新加载优先级文件: ';
 
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tidy-priority-'));
@@ -99,6 +99,116 @@ test('same-directory duplicates need no directory selection, and configuration i
   assert.equal(await fs.readFile(path.join(source, 'song.mp3'), 'utf8'), 'same');
 });
 
+test('directory choices list every filename in the compared directories belonging to the current group', async (t) => {
+  const { root, source, priority } = await fixture(t);
+  const [a, b] = ['A', 'B'].map((name) => path.join(source, name));
+  const names = ['歌曲.mp3', '歌曲 (1).mp3'];
+  for (const directory of [a, b]) {
+    for (const name of names) await put(path.join(directory, name));
+    await put(path.join(directory, 'unique.mp3'), directory);
+  }
+  const result = run(root, ['hash-repeat', source, '--dir-priority', priority], '2\n');
+  assert.equal(result.status, 0, result.stderr);
+  for (const [index, directory] of [a, b].entries()) {
+    const start = result.stdout.indexOf(`${index + 1}. ${directory}\n`);
+    assert.ok(start >= 0, result.stdout);
+    const end = result.stdout.indexOf(index === 0 ? `2. ${b}\n` : 'R - 重新加载优先级文件', start);
+    assert.ok(end > start, result.stdout);
+    const choice = result.stdout.slice(start, end);
+    for (const name of names) assert.ok(choice.includes(`   文件: ${name}\n`), choice);
+    assert.ok(!choice.includes('unique.mp3'), choice);
+  }
+  assert.ok(result.stdout.includes('R - 重新加载优先级文件'), result.stdout);
+  assert.deepEqual(await fs.readdir(a), ['unique.mp3']);
+  assert.deepEqual(await fs.readdir(b), ['unique.mp3', '歌曲.mp3']);
+});
+
+test('r and R reload complete rankings without rewriting them and apply the order to subsequent groups', async (t) => {
+  for (const { answer, move } of [{ answer: 'r', move: false }, { answer: 'R', move: true }]) {
+    await t.test(answer, async (t) => {
+      const { root, source, priority } = await fixture(t);
+      const [a, b] = ['A', 'B'].map((name) => path.join(source, name));
+      const target = path.join(root, 'removed');
+      for (const directory of [a, b]) {
+        await put(path.join(directory, 'first.mp3'), 'first');
+        await put(path.join(directory, 'second.mp3'), 'second');
+      }
+      const config = `${b}\n\n${a}\n${b}\n`;
+      const args = ['hash-repeat', source, '--dir-priority', priority];
+      if (move) args.push('--target', target);
+      const result = await interactive(root, args, async ({ index }) => {
+        assert.equal(index, 0);
+        for (const directory of [a, b])
+          assert.deepEqual(await fs.readdir(directory), ['first.mp3', 'second.mp3']);
+        await put(priority, config);
+        return answer;
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.stdout.split(prompt).length - 1, 1);
+      assert.equal(result.stderr, '');
+      assert.equal(await fs.readFile(priority, 'utf8'), config);
+      assert.deepEqual(await fs.readdir(a), []);
+      assert.deepEqual(await fs.readdir(b), ['first.mp3', 'second.mp3']);
+      assert.ok(result.stdout.includes(`读取检测了 4 个文件，${move ? '移动' : '删除'} 2 个文件`), result.stdout);
+      if (move) {
+        assert.equal(await fs.readFile(path.join(target, 'first.mp3'), 'utf8'), 'first');
+        assert.equal(await fs.readFile(path.join(target, 'second.mp3'), 'utf8'), 'second');
+      }
+    });
+  }
+});
+
+test('incomplete reloads repeat choices and re-evaluate the whole group before processing any files', async (t) => {
+  const { root, source, priority } = await fixture(t);
+  const [a, b, c, d] = ['A', 'B', 'C', 'D'].map((name) => path.join(source, name));
+  const files = [a, b, c, d].map((directory) => path.join(directory, 'song.mp3'));
+  for (const file of files) await put(file);
+  const edited = `${c}\n\n${b}\n${a}\n`;
+  const result = await interactive(root, ['hash-repeat', source, '--dir-priority', priority], async ({ index, stdout }) => {
+    assert.ok(index < 4, stdout);
+    for (const file of files) await fs.access(file);
+    const menu = stdout.slice(stdout.lastIndexOf('需要确定目录优先级:'));
+    const pair = index < 2 ? [a, b] : [c, d];
+    for (const [number, directory] of pair.entries())
+      assert.ok(menu.includes(`${number + 1}. ${directory}\n   文件: song.mp3\n`), menu);
+    assert.ok(menu.includes('R - 重新加载优先级文件'), menu);
+    assert.equal(await fs.readFile(priority, 'utf8'), index < 2 ? '' : edited);
+    if (index === 1) await put(priority, edited);
+    return ['r', 'R', 'r', '2'][index];
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stderr, '');
+  assert.equal(result.stdout.split(prompt).length - 1, 4);
+  assert.equal(await fs.readFile(priority, 'utf8'), `${d}\n${c}\n${b}\n${a}\n`);
+  assert.equal(await fs.readFile(files[3], 'utf8'), 'same');
+  for (const file of files.slice(0, 3)) await assert.rejects(fs.access(file));
+  assert.match(result.stdout, /读取检测了 4 个文件，删除 3 个文件/);
+});
+
+test('reload errors preserve the pending group and report already completed operations', async (t) => {
+  for (const failure of ['invalid', 'missing']) {
+    await t.test(failure, async (t) => {
+      const { root, source, priority } = await fixture(t);
+      const done = path.join(source, '0-done');
+      await put(path.join(done, 'song.mp3'), 'done');
+      await put(path.join(done, 'song (1).mp3'), 'done');
+      const files = ['A', 'B'].map((name) => path.join(source, name, 'song.mp3'));
+      for (const file of files) await put(file);
+      const result = await interactive(root, ['hash-repeat', source, '--dir-priority', priority], async ({ index }) => {
+        assert.equal(index, 0);
+        if (failure === 'invalid') await put(priority, '\nrelative/path\n');
+        else await fs.rm(priority);
+        return 'R';
+      });
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(result.stderr, failure === 'invalid' ? /第 2 行必须是绝对路径/ : /ENOENT/);
+      for (const file of files) await fs.access(file);
+      assert.deepEqual(await fs.readdir(done), ['song.mp3']);
+      assert.match(result.stdout, /读取检测了 4 个文件，删除 1 个文件/);
+    });
+  }
+});
+
 test('a parent directory entry does not define its subdirectory', async (t) => {
   const { root, source, priority } = await fixture(t);
   const subdirectory = path.join(source, 'subfolder');
@@ -107,7 +217,7 @@ test('a parent directory entry does not define its subdirectory', async (t) => {
   await put(priority, `${source}\n`);
   const result = run(root, ['hash-repeat', source, '--dir-priority', priority], '2\n');
   assert.equal(result.status, 0, result.stderr);
-  assert.ok(result.stdout.includes(`1. ${source}\n2. ${subdirectory}`), result.stdout);
+  assert.ok(result.stdout.includes(`1. ${source}\n   文件: a.mp3\n2. ${subdirectory}\n   文件: b.mp3`), result.stdout);
   assert.equal(await fs.readFile(priority, 'utf8'), `${subdirectory}\n${source}\n`);
   assert.equal(await fs.readFile(path.join(subdirectory, 'b.mp3'), 'utf8'), 'same');
   await assert.rejects(fs.access(path.join(source, 'a.mp3')));

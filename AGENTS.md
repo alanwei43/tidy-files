@@ -2,6 +2,8 @@
 
 本项目使用 TypeScript、Node.js ESM 和 yargs。源代码位于 `src`，构建产物位于 `dist`。
 
+修改代码前需要先阅读 @README.md 了解现有项目支持哪些命令。
+
 ## 命令组织
 
 - 每个 CLI 命令必须有独立目录：`src/commands/<命令名>/`。目录名与 CLI 命令名完全一致，例如 `hash-repeat`、`ls-ext`。

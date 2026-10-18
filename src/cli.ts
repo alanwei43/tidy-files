@@ -21,27 +21,29 @@ try {
         .positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' })
         .option('ext', { type: 'string', describe: '逗号分隔的扩展名' })
         .option('no-ext', { type: 'boolean', describe: '匹配没有扩展名的文件' })
-        .option('target', { type: 'string', describe: '移动匹配的文件到该目录' }), async (argv) => removeExtensions(argv.folder, argv.ext, argv.target, argv.noExt))
+        .option('target', { alias: 't', type: 'string', describe: '移动匹配的文件到该目录' }), async (argv) => removeExtensions(argv.folder, argv.ext, argv.target, argv.noExt))
         .command('h2e [folder]', '将文件名开头的 hash 移到末尾', (builder) => builder.positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' }), async (argv) => hashToEnd(argv.folder))
         .command('hash-repeat [folder]', '删除或移动内容重复的文件', (builder) => builder
         .fail((message, error) => { throw error ?? new Error(message); })
         .positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' })
-        .option('target', { type: 'string', describe: '移动重复文件到该目录' })
-        .option('dir-priority', { type: 'string', describe: '目录优先级文本文件，每行一个绝对路径，越靠前优先级越高' }), async (argv) => removeRepeatedHashes(argv.folder, argv.target, argv.dirPriority))
+        .option('target', { alias: 't', type: 'string', describe: '移动重复文件到该目录' })
+        .option('dir-priority', { alias: 'p', type: 'string', describe: '目录优先级文本文件，每行一个绝对路径，越靠前优先级越高' }), async (argv) => removeRepeatedHashes(argv.folder, argv.target, argv.dirPriority))
         .command('flat-files [folder]', '将子目录中的文件移到根目录', (builder) => builder.positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' }), async (argv) => flattenFiles(argv.folder))
         .command('trim-name [folder]', '去掉文件名首尾空白', (builder) => builder.positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' }), async (argv) => trimNames(argv.folder))
         .command('organize-name [folder]', '交互式整理重复文件名', (builder) => builder
         .positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' })
-        .option('target', { type: 'string', describe: '移动未选中的文件到该目录' }), async (argv) => organizeNames(argv.folder, argv.target))
+        .option('target', { alias: 't', type: 'string', describe: '移动未选中的文件到该目录' }), async (argv) => organizeNames(argv.folder, argv.target))
         .command('keep-repeat [folder]', '交互选择要保留的重复文件', (builder) => builder
         .positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' })
         .option('only-hash', { type: 'boolean', default: false, describe: '仅按内容 MD5 匹配，跳过没有相同 MD5 的文件' })
-        .option('target', { type: 'string', describe: '移动未选中的文件到该目录' }), async (argv) => keepRepeatedFiles(argv.folder, argv.target, argv.onlyHash))
+        .option('target', { alias: 't', type: 'string', describe: '移动未选中的文件到该目录' }), async (argv) => keepRepeatedFiles(argv.folder, argv.target, argv.onlyHash))
         .demandCommand(1)
         .strict()
         .epilogue(`版本：${version}`)
         .version('version', '显示版本号', version)
+        .alias('version', 'v')
         .help()
+        .alias('help', 'h')
         .parseAsync();
 }
 catch (error) {
