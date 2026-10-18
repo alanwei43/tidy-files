@@ -251,7 +251,7 @@ test('hash-repeat retains the preferred name and excludes an in-tree target', as
   assert.equal(await present(path.join(target, 'original (1).mp3')), true);
   const rerun = run('hash-repeat', folder, '--target', target);
   assert.equal(rerun.status, 0, rerun.stderr);
-  assert.equal(rerun.stdout.trim(), '');
+  assert.equal(rerun.stdout.trim(), '读取检测了 1 个文件，移动 0 个文件');
 });
 
 test('hash-repeat deletes lower-priority duplicates when no target is given', async (t) => {

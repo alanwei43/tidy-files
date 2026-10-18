@@ -124,7 +124,10 @@ export async function contentHash(filePath: string, knownStat?: Stats): Promise<
     await writeCachedHash(absolute, stat, digest);
     return digest;
 }
-export async function scanFiles(folder: string, excludedDirectory?: string, includeHash = true): Promise<Map<string, FileInfo>> {
+export async function scanFiles(folder: string, excludedDirectory?: string, includeHash = true, options?: {
+    excludedFile?: string;
+    onFile?: () => void;
+}): Promise<Map<string, FileInfo>> {
     const files = new Map<string, FileInfo>();
     async function visit(directory: string): Promise<void> {
         if (isWithin(cacheDirectory, directory) || (excludedDirectory && isWithin(excludedDirectory, directory)))
@@ -139,7 +142,10 @@ export async function scanFiles(folder: string, excludedDirectory?: string, incl
                 await visit(fullPath);
             }
             else if (entry.isFile()) {
+                if (fullPath === options?.excludedFile)
+                    continue;
                 const stat = await fs.stat(fullPath);
+                options?.onFile?.();
                 files.set(fullPath, {
                     stat,
                     fullPath,

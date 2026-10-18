@@ -22,9 +22,9 @@ tidy-files --help
 | 命令 | 用途 |
 | --- | --- |
 | `tidy-files ls-ext [folder]` | 列出小写扩展名及对应文件数，包括"无扩展名" |
-| `tidy-files rm-ext [folder] [--ext mp3,.flac] [--no-ext] [--target <dir>]` | 删除或移动指��扩展名或无扩展名的文件；匹配不区分大小写 |
+| `tidy-files rm-ext [folder] [--ext mp3,.flac] [--no-ext] [--target <dir>]` | 删除或移动指定扩展名或无扩展名的文件；匹配不区分大小写 |
 | `tidy-files h2e [folder]` | 把文件名开头的 32 位 hash 移到扩展名前 |
-| `tidy-files hash-repeat [folder] [--target <dir>]` | 按内容 MD5 和文件大小查重，删除或移动重复文件 |
+| `tidy-files hash-repeat [folder] [--target <dir>] [--dir-priority <file>]` | 按内容 MD5 和文件大小查重，删除或移动重复文件 |
 | `tidy-files flat-files [folder]` | 将子目录文件移到根目录，并删除空目录 |
 | `tidy-files trim-name [folder]` | 去掉文件名（扩展名前）两端的空白 |
 | `tidy-files organize-name [folder] [--target <dir>]` | 交互选择保留文件，并清理 hash 与末尾重复编号 |
@@ -126,7 +126,7 @@ $ tidy-files h2e ~/Music
 按"文件大小 + 内容 MD5"分组查重：同一组中只保留一个文件，其余删除（默认）或移动到 `--target` 目录。
 
 ```bash
-tidy-files hash-repeat [folder] [--target <dir>]
+tidy-files hash-repeat [folder] [--target <dir>] [--dir-priority <file>]
 ```
 
 **参数与选项**
@@ -141,6 +141,26 @@ tidy-files hash-repeat [folder] [--target <dir>]
 3. 文件名较短的优先被处理；
 4. 仍然打平时，保留完整路径字典序较小的文件。
 
+**目录优先级 `--dir-priority <file>`**
+
+可选的目录优先级文本文件，每行一个绝对目录路径，越靠前优先级越高。例如：
+
+```text
+/Music/收藏
+/Music
+/Music/subfolder
+```
+
+- 配置文件路径可以相对于当前工作目录；文件或父目录不存在时自动创建。创建失败、路径不是普通文件或内容无效时，在扫描前报错。
+- 按文件直接所在目录的完整路径精确匹配，父目录条目不影响子目录。同目录副本仍按上面的文件名规则处理；跨目录先选优先级最高的目录，再按文件名规则保留该目录中的一个副本。
+- 每次跨目录比较读取最新配置。两个目录都已登记时直接使用排序；否则显示两个完整目录路径，要求输入 `1` 或 `2` 选择优先保留的目录。回车和非法输入会重新询问。
+- 新目录胜出时插到已登记的落败目录前；新目录落败时插到已登记的胜出目录后；两个目录都未登记时，按“胜出在前、落败在后”追加到末尾。其他条目的相对顺序保持不变。
+- 收到选择后重新读取配置，在最新内容上合并选择。如果两个目录此时都已登记，则以文件中的最新排序为准。每组先补齐涉及的目录排序，在处理文件前再次读取最新排序，之后才删除或移动其余副本。
+- 忽略空行，兼容 Windows 换行；尾部斜杠及 `.`、`..` 会规范化，重复目录取首次出现的位置。允许登记不存在的目录；非空行不是绝对路径时报出行号并中止。
+- 优先级文件自身排除在查重和统计之外。等待选择时遇到 EOF 或 `Ctrl+C` 会中止并保留当前组所有文件，之前完成的操作保留；EOF 返回非零状态，`Ctrl+C` 返回状态码 130。
+
+不传 `--dir-priority` 时沿用原有保留规则。
+
 **示例**
 
 ```bash
@@ -149,14 +169,19 @@ tidy-files hash-repeat ~/Music
 
 # 把重复文件移入隔离目录，稍后再人工确认
 tidy-files hash-repeat ~/Music --target ~/Music/_duplicates
+
+# 按目录优先级保留文件，缺少排序时交互确认并保存
+tidy-files hash-repeat ~/Music --dir-priority ~/.config/tidy-files/dir-priority.txt
 ```
 
 **输出示例**
 
 ```text
 已删除: /home/user/Music/歌曲 (1).mp3
-已移动: /home/user/Music/0a1b2c… 歌曲.mp3 -> /home/user/Music/_duplicates/0a1b2c… 歌曲.mp3
+读取检测了 10 个文件，删除 1 个文件
 ```
+
+无论是否传入 `--dir-priority`，结束、中止或出错时都会输出汇总。读取检测数包括本次纳入查重的所有普通文件（含无重复文件及命中 hash 缓存的文件）；删除或移动数只累计成功的操作。空目录或没有重复文件时也会输出统计。目标目录、hash 缓存目录及符号链接继续跳过。
 
 ---
 

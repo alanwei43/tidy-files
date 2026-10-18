@@ -2,6 +2,7 @@ import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { ensureSourceFolder, exists, moveToTarget, prepareTarget, removeEmptySubdirectories, removeFile, renameInPlace, sameContent, scanFiles, type FileInfo } from './files.js';
 import { DUPLICATE_MARKER, normalizeFileName, resolveHashFileName } from './names.js';
+import { DirectoryPriority } from './directory-priority.js';
 function compareText(a: string, b: string): number {
     return a < b ? -1 : a > b ? 1 : 0;
 }
@@ -91,29 +92,67 @@ function removalPriority(a: FileInfo, b: FileInfo): number {
         return a.fileName.length - b.fileName.length;
     return compareText(b.fullPath, a.fullPath);
 }
-export async function removeRepeatedHashes(folder: string, target?: string): Promise<void> {
-    const source = await ensureSourceFolder(folder);
-    const destination = target ? await prepareTarget(source, target) : undefined;
-    const files = await scanFiles(source, destination, true);
-    const groups = new Map<string, FileInfo[]>();
-    for (const info of files.values()) {
-        const key = `${info.size}:${info.hash}`;
-        groups.set(key, [...(groups.get(key) ?? []), info]);
-    }
-    for (const group of groups.values()) {
-        if (group.length < 2)
-            continue;
-        group.sort(removalPriority);
-        for (const info of group.slice(0, -1)) {
-            if (destination) {
-                const moved = await moveToTarget(info, destination);
-                console.log(`已移动: ${info.fullPath} -> ${moved}`);
-            }
-            else {
-                await removeFile(info.fullPath);
-                console.log(`已删除: ${info.fullPath}`);
+export async function removeRepeatedHashes(folder: string, target?: string, dirPriority?: string): Promise<void> {
+    let scanned = 0;
+    let processed = 0;
+    let interrupted = false;
+    const interrupt = () => {
+        interrupted = true;
+        process.exitCode = 130;
+        priority?.close();
+    };
+    const checkInterrupted = () => {
+        if (interrupted)
+            throw new Error('操作已中止');
+    };
+    const priority = dirPriority === undefined ? undefined : new DirectoryPriority(dirPriority, interrupt);
+    process.on('SIGINT', interrupt);
+    try {
+        const source = await ensureSourceFolder(folder);
+        await priority?.prepare();
+        checkInterrupted();
+        const destination = target ? await prepareTarget(source, target) : undefined;
+        const files = await scanFiles(source, destination, true, {
+            excludedFile: priority?.file,
+            onFile: () => { checkInterrupted(); scanned += 1; },
+        });
+        const groups = new Map<string, FileInfo[]>();
+        for (const info of files.values()) {
+            const key = `${info.size}:${info.hash}`;
+            groups.set(key, [...(groups.get(key) ?? []), info]);
+        }
+        for (const group of groups.values()) {
+            checkInterrupted();
+            if (group.length < 2)
+                continue;
+            const directories = [...new Set(group.map((info) => info.directory))];
+            const preferred = priority && directories.length > 1
+                ? await priority.preferredDirectory(directories) : undefined;
+            checkInterrupted();
+            const keep = group.filter((info) => preferred === undefined || info.directory === preferred)
+                .sort(removalPriority).at(-1)!;
+            // Preserve the existing processing order when no directory override applies.
+            for (const info of group.sort(removalPriority)) {
+                if (info === keep)
+                    continue;
+                checkInterrupted();
+                if (destination) {
+                    const moved = await moveToTarget(info, destination);
+                    processed += 1;
+                    console.log(`已移动: ${info.fullPath} -> ${moved}`);
+                }
+                else {
+                    await removeFile(info.fullPath);
+                    processed += 1;
+                    console.log(`已删除: ${info.fullPath}`);
+                }
             }
         }
+    }
+    finally {
+        priority?.close();
+        process.off('SIGINT', interrupt);
+        console.log(`读取检测了 ${scanned} 个文件，${target ? '移动' : '删除'} ${processed} 个文件`);
     }
 }
 export async function flattenFiles(folder: string): Promise<void> {

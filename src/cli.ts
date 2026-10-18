@@ -17,8 +17,10 @@ try {
         .option('target', { type: 'string', describe: '移动匹配的文件到该目录' }), async (argv) => removeExtensions(argv.folder, argv.ext, argv.target, argv.noExt))
         .command('h2e [folder]', '将文件名开头的 hash 移到末尾', (builder) => builder.positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' }), async (argv) => hashToEnd(argv.folder))
         .command('hash-repeat [folder]', '删除或移动内容重复的文件', (builder) => builder
+        .fail((message, error) => { throw error ?? new Error(message); })
         .positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' })
-        .option('target', { type: 'string', describe: '移动重复文件到该目录' }), async (argv) => removeRepeatedHashes(argv.folder, argv.target))
+        .option('target', { type: 'string', describe: '移动重复文件到该目录' })
+        .option('dir-priority', { type: 'string', describe: '目录优先级文本文件，每行一个绝对路径，越靠前优先级越高' }), async (argv) => removeRepeatedHashes(argv.folder, argv.target, argv.dirPriority))
         .command('flat-files [folder]', '将子目录中的文件移到根目录', (builder) => builder.positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' }), async (argv) => flattenFiles(argv.folder))
         .command('trim-name [folder]', '去掉文件名首尾空白', (builder) => builder.positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' }), async (argv) => trimNames(argv.folder))
         .command('organize-name [folder]', '交互式整理重复文件名', (builder) => builder
@@ -37,5 +39,5 @@ try {
 }
 catch (error) {
     console.error(error instanceof Error ? error.message : error);
-    process.exitCode = 1;
+    process.exitCode ??= 1;
 }
