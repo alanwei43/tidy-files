@@ -2,7 +2,14 @@
 import { readFileSync } from 'node:fs';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { flattenFiles, hashToEnd, keepRepeatedFiles, listExtensions, organizeNames, removeExtensions, removeRepeatedHashes, trimNames, } from './commands.js';
+import { listExtensions } from './commands/ls-ext/command.js';
+import { removeExtensions } from './commands/rm-ext/command.js';
+import { hashToEnd } from './commands/h2e/command.js';
+import { removeRepeatedHashes } from './commands/hash-repeat/command.js';
+import { flattenFiles } from './commands/flat-files/command.js';
+import { trimNames } from './commands/trim-name/command.js';
+import { organizeNames } from './commands/organize-name/command.js';
+import { keepRepeatedFiles } from './commands/keep-repeat/command.js';
 const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
 try {
     await yargs(hideBin(process.argv))
