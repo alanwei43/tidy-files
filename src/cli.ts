@@ -26,7 +26,8 @@ try {
         .option('target', { type: 'string', describe: '移动未选中的文件到该目录' }), async (argv) => organizeNames(argv.folder, argv.target))
         .command('keep-repeat [folder]', '交互选择要保留的重复文件', (builder) => builder
         .positional('folder', { type: 'string', default: '.', describe: '源目录，默认为当前目录' })
-        .option('target', { type: 'string', describe: '移动未选中的文件到该目录' }), async (argv) => keepRepeatedFiles(argv.folder, argv.target))
+        .option('only-hash', { type: 'boolean', default: false, describe: '仅按内容 MD5 匹配，跳过没有相同 MD5 的文件' })
+        .option('target', { type: 'string', describe: '移动未选中的文件到该目录' }), async (argv) => keepRepeatedFiles(argv.folder, argv.target, argv.onlyHash))
         .demandCommand(1)
         .strict()
         .epilogue(`版本：${version}`)

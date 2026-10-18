@@ -28,7 +28,7 @@ tidy-files --help
 | `tidy-files flat-files [folder]` | 将子目录文件移到根目录，并删除空目录 |
 | `tidy-files trim-name [folder]` | 去掉文件名（扩展名前）两端的空白 |
 | `tidy-files organize-name [folder] [--target <dir>]` | 交互选择保留文件，并清理 hash 与末尾重复编号 |
-| `tidy-files keep-repeat [folder] [--target <dir>]` | 逐文件交互选择保留项，删除或移动其余候选文件 |
+| `tidy-files keep-repeat [folder] [--only-hash] [--target <dir>]` | 逐文件交互选择保留项，删除或移动其余候选文件 |
 
 ---
 
@@ -254,12 +254,13 @@ $ tidy-files organize-name ~/Music --target ~/trash
 逐个文件处理：从当前文件名去掉 hash、末尾重复编号和扩展名得到基础名，找出内容 MD5 相同或文件名包含该基础名的所有候选文件，由你输入要保留的**一个或多个**序号，其余候选删除或移动。保留下来的文件如果带 hash 或重复编号，会被重命名为干净名称。
 
 ```bash
-tidy-files keep-repeat [folder] [--target <dir>]
+tidy-files keep-repeat [folder] [--only-hash] [--target <dir>]
 ```
 
 **参数与选项**
 
 - `folder`：源目录，默认为当前目录。
+- `--only-hash`：仅按文件内容的 MD5 匹配候选，不比较文件名，也不限制扩展名。没有相同 MD5 的文件一律跳过，即使文件名带 hash 或重复编号。保留项仍按原有规则清理名称，重命名冲突时保留原名。不传此参数时保持原有行为。
 - `--target <dir>`：未选中的文件移动到该目录而不是删除。
 
 **交互流程**
@@ -285,6 +286,12 @@ $ tidy-files keep-repeat ~/Music
 ```
 
 与 `organize-name` 的区别：`keep-repeat` 可以一次保留多个文件，并且候选匹配更宽松（包含基础名即算候选）；`organize-name` 只处理带 hash/重复编号的文件，每组只能保留一个。
+
+仅按内容 MD5 交互去重，并把未选中的文件移到隔离目录：
+
+```bash
+tidy-files keep-repeat ~/Music --only-hash --target ~/Music/_duplicates
+```
 
 ---
 
@@ -315,4 +322,4 @@ npm test
 npm pack --dry-run
 ```
 
-推送到 `master` 会运行 GitHub Actions 测试，测试通过后通过 npm Trusted Publishing 发布到 npm。首次使用前，在 npmjs.com 的 `@js-core/tidy-files` 包设置中添加 GitHub Actions 为可信发布方。
+推送 `v*` 标签（如 `v0.1.13`）会运行 GitHub Actions 构建和测试，测试通过后通过 npm Trusted Publishing 发布到 npm。发布前需更新 `package.json` 和 `package-lock.json` 中的版本号，并提交代码。首次使用前，在 npmjs.com 的 `@js-core/tidy-files` 包设置中添加 GitHub Actions 为可信发布方。

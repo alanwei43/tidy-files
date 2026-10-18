@@ -397,6 +397,78 @@ test('keep-repeat combines hash and name matches, moves unselected files, and re
   assert.equal(await fs.readFile(path.join(target, 'other.mp3'), 'utf8'), 'longest');
 });
 
+test('keep-repeat --only-hash excludes name matches and moves duplicates across extensions', async (t) => {
+  const folder = await fixture(t);
+  const target = path.join(folder, 'removed');
+  await put(path.join(folder, 'alpha (1).mp3'), 'longest');
+  await put(path.join(folder, 'alpha.mp3'), 'another');
+  await put(path.join(folder, 'alpha live.flac'), 'medium');
+  await put(path.join(folder, 'nested', 'other.flac'), 'longest');
+
+  const result = await runInteractive(['keep-repeat', folder, '--only-hash', '--target', target], '1');
+  assert.equal(result.status, 0, result.stderr);
+  const hash = createHash('md5').update('longest').digest('hex');
+  assert.deepEqual(result.stdout.split('\n').filter((line) => /^\d+ \| /.test(line)), [
+    `1 | ${hash} | 7B(7B) | alpha (1).mp3 | ${path.join(folder, 'alpha (1).mp3')}`,
+    `2 | ${hash} | 7B(7B) | other.flac | ${path.join(folder, 'nested', 'other.flac')}`,
+  ]);
+  assert.match(result.stdout, /保留1个文件，移动1个文件/);
+  assert.match(result.stderr, /重命名冲突，已保留原名/);
+  assert.equal(await fs.readFile(path.join(folder, 'alpha (1).mp3'), 'utf8'), 'longest');
+  assert.equal(await fs.readFile(path.join(folder, 'alpha.mp3'), 'utf8'), 'another');
+  assert.equal(await fs.readFile(path.join(folder, 'alpha live.flac'), 'utf8'), 'medium');
+  assert.equal(await present(path.join(folder, 'nested', 'other.flac')), false);
+  assert.equal(await fs.readFile(path.join(target, 'other.flac'), 'utf8'), 'longest');
+});
+
+test('keep-repeat --only-hash deletes unselected duplicates and cleans the selected name', async (t) => {
+  const folder = await fixture(t);
+  const markedName = `a [${embeddedHash}].mp3`;
+  await put(path.join(folder, markedName), 'same');
+  await put(path.join(folder, 'z.flac'), 'same');
+
+  const result = await runInteractive(['keep-repeat', folder, '--only-hash'], '1');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /保留1个文件，删除1个文件/);
+  assert.equal(await fs.readFile(path.join(folder, 'a.mp3'), 'utf8'), 'same');
+  assert.equal(await present(path.join(folder, markedName)), false);
+  assert.equal(await present(path.join(folder, 'z.flac')), false);
+});
+
+test('keep-repeat --only-hash skips all unique content including marked names', async (t) => {
+  const folder = await fixture(t);
+  const files = new Map([
+    [`hash [${embeddedHash}].mp3`, 'first'],
+    [`hash [${embeddedHash}].flac`, 'other'],
+    ['marked (1).mp3', 'marked'],
+    ['plain.mp3', 'plain'],
+  ]);
+  for (const [name, content] of files)
+    await put(path.join(folder, name), content);
+
+  const result = await runInteractive(['keep-repeat', folder, '--only-hash'], '1');
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, '');
+  assert.equal(result.stderr, '');
+  assert.deepEqual((await fs.readdir(folder)).sort(), [...files.keys()].sort());
+  for (const [name, content] of files)
+    assert.equal(await fs.readFile(path.join(folder, name), 'utf8'), content);
+});
+
+test('keep-repeat --only-hash preserves multiple selections and later rounds', async (t) => {
+  const folder = await fixture(t);
+  await put(path.join(folder, 'a.mp3'), 'same');
+  await put(path.join(folder, 'b.flac'), 'same');
+
+  const result = await runInteractive(['keep-repeat', folder, '--only-hash'], ['1,2', '2']);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.match(/输入要保留的文件序号/g)?.length, 2);
+  assert.match(result.stdout, /保留2个文件，删除0个文件/);
+  assert.match(result.stdout, /保留1个文件，删除1个文件/);
+  assert.equal(await present(path.join(folder, 'a.mp3')), false);
+  assert.equal(await fs.readFile(path.join(folder, 'b.flac'), 'utf8'), 'same');
+});
+
 test('keep-repeat allows a later round to delete a file kept earlier', async (t) => {
   const folder = await fixture(t);
   await put(path.join(folder, 'a.mp3'), 'same');

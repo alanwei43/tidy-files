@@ -224,10 +224,10 @@ export async function organizeNames(folder: string, target?: string): Promise<vo
     }
 }
 
-function keepRepeatCandidates(info: FileInfo, files: Map<string, FileInfo>): FileInfo[] {
+function keepRepeatCandidates(info: FileInfo, files: Map<string, FileInfo>, onlyHash: boolean): FileInfo[] {
     const name = path.parse(normalizeFileName(info.fileName).name).name;
     return [...files.values()].filter((candidate) => candidate.hash === info.hash
-        || (name.length > 0 && path.parse(candidate.fileName).name.includes(name)))
+        || (!onlyHash && name.length > 0 && path.parse(candidate.fileName).name.includes(name)))
         .sort(compareCandidates);
 }
 
@@ -261,7 +261,7 @@ function askKeepRepeatSelection(input: ReturnType<typeof createInterface>): Prom
     });
 }
 
-export async function keepRepeatedFiles(folder: string, target?: string): Promise<void> {
+export async function keepRepeatedFiles(folder: string, target?: string, onlyHash = false): Promise<void> {
     const source = await ensureSourceFolder(folder);
     const destination = target ? await prepareTarget(source, target) : undefined;
     const files = await scanFiles(source, destination, true);
@@ -275,9 +275,9 @@ export async function keepRepeatedFiles(folder: string, target?: string): Promis
             const info = files.get(scanned.fullPath);
             if (info !== scanned)
                 continue;
-            const candidates = keepRepeatCandidates(info, files);
+            const candidates = keepRepeatCandidates(info, files, onlyHash);
             const normalized = normalizeFileName(info.fileName);
-            if (candidates.length === 1 && !normalized.hasHash && !normalized.hasDuplicateSuffix)
+            if (candidates.length === 1 && (onlyHash || (!normalized.hasHash && !normalized.hasDuplicateSuffix)))
                 continue;
             printCandidates(candidates);
             const response = await askKeepRepeatSelection(input);
